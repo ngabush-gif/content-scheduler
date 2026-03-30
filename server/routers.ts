@@ -13,12 +13,14 @@ import {
   createScheduledPost,
   deleteContentPost,
   deleteScheduledPost,
+  disconnectPlatform,
   getAllContentPosts,
   getAllUsers,
   getAnalyticsSummary,
   getApprovalHistoryByPost,
   getContentPostById,
   getContentPostsByAuthor,
+  getPlatformConnectionWithToken,
   getPlatformConnections,
   getPublishLog,
   getScheduledPosts,
@@ -27,6 +29,7 @@ import {
   updateUserRole,
   upsertPlatformConnection,
 } from "./db";
+import { publishToFacebook, publishToInstagram, publishToTikTok } from "./platformPublisher";
 
 // ─── Admin guard ──────────────────────────────────────────────────────────────
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -531,6 +534,10 @@ Return JSON with:
         z.object({
           platform: z.enum(["facebook", "instagram", "tiktok"]),
           accountName: z.string(),
+          accessToken: z.string(),
+          // Instagram: Instagram Business Account ID
+          // Facebook: Page ID
+          // TikTok: not required (token is sufficient)
           accountId: z.string().optional(),
         })
       )
@@ -540,10 +547,56 @@ Return JSON with:
           platform: input.platform,
           accountName: input.accountName,
           accountId: input.accountId,
+          accessToken: input.accessToken,
           isActive: true,
         });
         return { success: true };
       }),
+
+    disconnectPlatform: protectedProcedure
+      .input(z.object({ platform: z.enum(["facebook", "instagram", "tiktok"]) }))
+      .mutation(async ({ ctx, input }) => {
+        await disconnectPlatform(ctx.user.id, input.platform);
+        return { success: true };
+      }),
+
+    testConnection: protectedProcedure
+      .input(z.object({ platform: z.enum(["facebook", "instagram", "tiktok"]) }))
+      .mutation(async ({ ctx, input }) => {
+        const conn = await getPlatformConnectionWithToken(ctx.user.id, input.platform);
+        if (!conn || !conn.accessToken) {
+          return { success: false, message: "No credentials saved for this platform" };
+        }
+        try {
+          if (input.platform === "instagram") {
+            const res = await fetch(
+              `https://graph.instagram.com/v21.0/me?fields=id,username&access_token=${conn.accessToken}`
+            );
+            const data = await res.json() as any;
+            if (data.error) return { success: false, message: data.error.message };
+            return { success: true, message: `Connected as @${data.username}` };
+          } else if (input.platform === "facebook") {
+            const pageId = conn.accountId;
+            const res = await fetch(
+              `https://graph.facebook.com/v21.0/${pageId}?fields=id,name&access_token=${conn.accessToken}`
+            );
+            const data = await res.json() as any;
+            if (data.error) return { success: false, message: data.error.message };
+            return { success: true, message: `Connected to page: ${data.name}` };
+          } else {
+            // TikTok: verify token
+            const res = await fetch("https://open.tiktokapis.com/v2/user/info/?fields=display_name", {
+              headers: { Authorization: `Bearer ${conn.accessToken}` },
+            });
+            const data = await res.json() as any;
+            if (data.error?.code !== "ok") return { success: false, message: data.error?.message ?? "TikTok auth failed" };
+            return { success: true, message: `Connected as ${data.data?.user?.display_name ?? "TikTok user"}` };
+          }
+        } catch (e: any) {
+          return { success: false, message: e?.message ?? "Connection test failed" };
+        }
+      }),
+
 
     post: protectedProcedure
       .input(
@@ -559,21 +612,55 @@ Return JSON with:
           throw new TRPCError({ code: "BAD_REQUEST", message: "Only approved posts can be published" });
         }
 
-        const results = [];
+        const results: { platform: string; success: boolean; errorMessage?: string; platformPostId?: string }[] = [];
+
         for (const platform of input.platforms) {
-          // Simulate publishing (real integration would call platform APIs)
-          const success = true;
+          const conn = await getPlatformConnectionWithToken(ctx.user.id, platform);
+
+          if (!conn || !conn.accessToken) {
+            results.push({ platform, success: false, errorMessage: `No ${platform} account connected. Please connect your account in Platform Settings.` });
+            await addPublishLog({
+              postId: input.postId,
+              publishedById: ctx.user.id,
+              platform,
+              status: "failed",
+              errorMessage: "No credentials configured",
+            });
+            continue;
+          }
+
+          let result;
+          if (platform === "instagram") {
+            result = await publishToInstagram(post, {
+              accessToken: conn.accessToken,
+              accountId: conn.accountId ?? "",
+            });
+          } else if (platform === "facebook") {
+            result = await publishToFacebook(post, {
+              accessToken: conn.accessToken,
+              pageId: conn.accountId ?? "",
+            });
+          } else {
+            result = await publishToTikTok(post, { accessToken: conn.accessToken });
+          }
+
           await addPublishLog({
             postId: input.postId,
             publishedById: ctx.user.id,
             platform,
-            status: success ? "success" : "failed",
-            platformPostId: success ? `sim_${Date.now()}_${platform}` : undefined,
+            status: result.success ? "success" : "failed",
+            platformPostId: result.platformPostId,
+            errorMessage: result.errorMessage,
           });
-          results.push({ platform, success });
+
+          results.push({ platform, success: result.success, errorMessage: result.errorMessage, platformPostId: result.platformPostId });
         }
 
-        await updateContentPost(input.postId, { status: "published", publishedAt: new Date() });
+        const anySuccess = results.some((r) => r.success);
+        if (anySuccess) {
+          await updateContentPost(input.postId, { status: "published", publishedAt: new Date() });
+        }
+
         return { results };
       }),
 

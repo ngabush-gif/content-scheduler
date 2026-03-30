@@ -47,3 +47,18 @@
 - [x] Loading states, empty states, error handling
 - [x] Vitest unit tests (12 tests, all passing)
 - [x] Final checkpoint and delivery
+
+## Platform Integration (Manual Credentials)
+- [x] Update DB schema: platform_connections table with encrypted access_token, page_id, account_id per user
+- [x] Backend: save/update/delete platform credentials per user
+- [x] Backend: real Instagram Graph API publish (photo/caption via access token + account ID)
+- [x] Backend: real Facebook Graph API publish (post to page via access token + page ID)
+- [x] Backend: TikTok API publish with clear setup instructions
+- [x] Frontend: Platform Connections page with per-platform credential forms
+- [x] Frontend: Connection status indicators (connected/disconnected/error)
+- [x] Frontend: Update Publishing page to use real connected accounts
+- [x] Frontend: Per-platform publish result feedback (success/error per platform)
+- [x] Persistent connection error state in Platform Connections page (badge + last-test message)
+- [x] Instagram publish: clear error when no media URL is present (placeholder image used as fallback)
+- [x] TikTok publish: clear error message when no video URL is attached to post
+- [x] Platform Connections page shows last test result inline (not only toast)

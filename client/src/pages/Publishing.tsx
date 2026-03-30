@@ -6,7 +6,7 @@ import { trpc } from "@/lib/trpc";
 import { NICHES, PLATFORMS } from "@shared/niches";
 import { useAuth } from "@/_core/hooks/useAuth";
 import {
-  CheckCircle, ExternalLink, Loader2, Send, XCircle, AlertCircle, RefreshCw,
+  AlertCircle, CheckCircle, Loader2, PlugZap, RefreshCw, Send, XCircle,
 } from "lucide-react";
 import { useState } from "react";
 import { useLocation } from "wouter";
@@ -26,9 +26,11 @@ function PublishingContent() {
   const isAdmin = user?.role === "admin";
   const [publishingId, setPublishingId] = useState<number | null>(null);
   const [selectedPlatforms, setSelectedPlatforms] = useState<Record<number, string[]>>({});
+  const [publishResults, setPublishResults] = useState<Record<number, { platform: string; success: boolean; errorMessage?: string }[]>>({});
 
   const { data: approvedPosts, isLoading, refetch } = trpc.content.list.useQuery({ status: "approved" });
   const { data: publishedPosts } = trpc.content.list.useQuery({ status: "published" });
+  const { data: connections } = trpc.publish.platforms.useQuery();
 
   const utils = trpc.useUtils();
 
@@ -36,11 +38,17 @@ function PublishingContent() {
     onSuccess: (data, vars) => {
       utils.content.list.invalidate();
       setPublishingId(null);
+      setPublishResults((prev) => ({ ...prev, [vars.postId]: data.results }));
+
+      const succeeded = data.results.filter((r) => r.success);
       const failed = data.results.filter((r) => !r.success);
-      if (failed.length === 0) {
-        toast.success(`Published to ${vars.platforms.join(", ")}!`);
+
+      if (succeeded.length > 0 && failed.length === 0) {
+        toast.success(`Published to ${succeeded.map((r) => r.platform).join(", ")}!`);
+      } else if (succeeded.length > 0 && failed.length > 0) {
+        toast.warning(`Published to ${succeeded.map((r) => r.platform).join(", ")}. Failed: ${failed.map((r) => r.platform).join(", ")}`);
       } else {
-        toast.error(`Some platforms failed: ${failed.map((r) => r.platform).join(", ")}`);
+        toast.error("Publishing failed on all selected platforms");
       }
     },
     onError: (e) => {
@@ -61,9 +69,15 @@ function PublishingContent() {
     });
   };
 
-  const handlePublish = (post: any, platforms: string[]) => {
-    setPublishingId(post.id);
-    publishMutation.mutate({ postId: post.id, platforms: platforms as any });
+  const handlePublish = (postId: number, platforms: string[]) => {
+    setPublishingId(postId);
+    setPublishResults((prev) => ({ ...prev, [postId]: [] }));
+    publishMutation.mutate({ postId, platforms: platforms as any });
+  };
+
+  const getConnectionStatus = (platformId: string) => {
+    const conn = (connections ?? []).find((c: any) => c.platform === platformId);
+    return conn?.isActive ? conn : null;
   };
 
   if (!isAdmin) {
@@ -76,6 +90,8 @@ function PublishingContent() {
     );
   }
 
+  const connectedCount = PLATFORMS.filter((p) => getConnectionStatus(p.id)).length;
+
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       {/* Header */}
@@ -86,7 +102,7 @@ function PublishingContent() {
             Publishing
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Publish approved content to Facebook, Instagram and TikTok
+            Publish approved content to your connected social media accounts
           </p>
         </div>
         <Button variant="outline" onClick={() => refetch()} className="border-border/50 gap-2 text-sm">
@@ -98,38 +114,68 @@ function PublishingContent() {
       {/* Platform Connection Status */}
       <Card className="bg-card border-border/50">
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold">Platform Connections</CardTitle>
+          <CardTitle className="text-sm font-semibold flex items-center justify-between">
+            <span>Your Platform Connections</span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setLocation("/connections")}
+              className="border-border/50 text-xs h-7 px-2.5 gap-1.5"
+            >
+              <PlugZap className="w-3 h-3" />
+              Manage Connections
+            </Button>
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[
-              { id: "instagram", label: "Instagram", emoji: "📸", connected: true, note: "Connected via MCP" },
-              { id: "facebook", label: "Facebook", emoji: "📘", connected: false, note: "Connect via Meta Business Suite" },
-              { id: "tiktok", label: "TikTok", emoji: "🎵", connected: false, note: "Connect via TikTok for Business" },
-            ].map((platform) => (
-              <div
-                key={platform.id}
-                className={`p-4 rounded-xl border ${
-                  platform.connected
-                    ? "border-green-400/20 bg-green-400/5"
-                    : "border-border/40 bg-card"
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl">{platform.emoji}</span>
-                    <span className="font-medium text-sm">{platform.label}</span>
+              { id: "instagram", label: "Instagram", emoji: "📸" },
+              { id: "facebook", label: "Facebook", emoji: "📘" },
+              { id: "tiktok", label: "TikTok", emoji: "🎵" },
+            ].map((platform) => {
+              const conn = getConnectionStatus(platform.id);
+              return (
+                <div
+                  key={platform.id}
+                  className={`p-4 rounded-xl border transition-all ${
+                    conn
+                      ? "border-green-400/20 bg-green-400/5"
+                      : "border-border/40 bg-card/50"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">{platform.emoji}</span>
+                      <span className="font-medium text-sm">{platform.label}</span>
+                    </div>
+                    {conn ? (
+                      <CheckCircle className="w-4 h-4 text-green-400" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-muted-foreground/40" />
+                    )}
                   </div>
-                  {platform.connected ? (
-                    <CheckCircle className="w-4 h-4 text-green-400" />
+                  {conn ? (
+                    <p className="text-xs text-green-400/80">{conn.accountName}</p>
                   ) : (
-                    <AlertCircle className="w-4 h-4 text-muted-foreground/40" />
+                    <p className="text-xs text-muted-foreground/60">Not connected</p>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground">{platform.note}</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
+          {connectedCount === 0 && (
+            <div className="mt-3 p-3 rounded-lg bg-primary/5 border border-primary/20 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-primary shrink-0" />
+              <p className="text-xs text-muted-foreground">
+                No platforms connected yet.{" "}
+                <button onClick={() => setLocation("/connections")} className="text-primary underline">
+                  Connect your accounts
+                </button>{" "}
+                to start publishing.
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -161,48 +207,72 @@ function PublishingContent() {
               const niche = NICHES.find((n) => n.id === post.niche);
               const isPublishing = publishingId === post.id;
               const postPlatforms = selectedPlatforms[post.id] ?? [];
+              const results = publishResults[post.id] ?? [];
 
               return (
                 <Card key={post.id} className="bg-card border-border/50 hover:border-primary/20 transition-all">
                   <CardContent className="p-5">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex items-start gap-3 min-w-0 flex-1">
-                        <span className="text-2xl shrink-0">{(niche as any)?.emoji ?? "📝"}</span>
-                        <div className="min-w-0 flex-1">
-                          <p className="font-medium text-sm">{post.title}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">{niche?.label} · {post.contentType}</p>
-                          {(post.caption || post.fullContent) && (
-                            <p className="text-xs text-muted-foreground/70 mt-2 line-clamp-2 leading-relaxed">
-                              {post.caption || post.fullContent}
-                            </p>
-                          )}
-                          {/* Platform selector */}
-                          <div className="flex flex-wrap gap-2 mt-3">
-                            {PLATFORMS.map((p) => {
-                              const isSelected = postPlatforms.includes(p.id);
-                              return (
-                                <button
-                                  key={p.id}
-                                  onClick={() => togglePlatform(post.id, p.id)}
-                                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
-                                    isSelected
-                                      ? "border-primary/40 bg-primary/8 text-primary"
-                                      : "border-border/40 text-muted-foreground hover:border-border"
-                                  }`}
-                                >
-                                  {p.id === "facebook" ? "📘" : p.id === "instagram" ? "📸" : "🎵"}
-                                  {p.label}
-                                </button>
-                              );
-                            })}
-                          </div>
+                    <div className="flex items-start gap-4">
+                      <span className="text-2xl shrink-0 mt-0.5">{(niche as any)?.emoji ?? "📝"}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm">{post.title}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{niche?.label} · {post.contentType}</p>
+                        {(post.caption || post.fullContent) && (
+                          <p className="text-xs text-muted-foreground/70 mt-2 line-clamp-2 leading-relaxed">
+                            {post.caption || post.fullContent}
+                          </p>
+                        )}
+
+                        {/* Platform selector */}
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          {PLATFORMS.map((p) => {
+                            const isSelected = postPlatforms.includes(p.id);
+                            const conn = getConnectionStatus(p.id);
+                            return (
+                              <button
+                                key={p.id}
+                                onClick={() => togglePlatform(post.id, p.id)}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                                  isSelected
+                                    ? "border-primary/40 bg-primary/8 text-primary"
+                                    : "border-border/40 text-muted-foreground hover:border-border"
+                                } ${!conn ? "opacity-50" : ""}`}
+                                title={!conn ? `Connect ${p.label} first` : undefined}
+                              >
+                                {p.id === "facebook" ? "📘" : p.id === "instagram" ? "📸" : "🎵"}
+                                {p.label}
+                                {conn ? (
+                                  <CheckCircle className="w-2.5 h-2.5 text-green-400" />
+                                ) : (
+                                  <AlertCircle className="w-2.5 h-2.5 text-muted-foreground/40" />
+                                )}
+                              </button>
+                            );
+                          })}
                         </div>
+
+                        {/* Publish results */}
+                        {results.length > 0 && (
+                          <div className="mt-3 space-y-1.5">
+                            {results.map((r) => (
+                              <div key={r.platform} className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg ${
+                                r.success ? "bg-green-400/10 text-green-400" : "bg-destructive/10 text-destructive"
+                              }`}>
+                                {r.success ? <CheckCircle className="w-3 h-3 shrink-0" /> : <XCircle className="w-3 h-3 shrink-0" />}
+                                <span className="capitalize font-medium">{r.platform}:</span>
+                                <span>{r.success ? "Published successfully" : r.errorMessage ?? "Failed"}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                      <div className="flex flex-col gap-2 shrink-0">
+
+                      {/* Publish button */}
+                      <div className="shrink-0">
                         {postPlatforms.length > 0 ? (
                           <Button
                             size="sm"
-                            onClick={() => handlePublish(post, postPlatforms)}
+                            onClick={() => handlePublish(post.id, postPlatforms)}
                             disabled={isPublishing}
                             className="bg-primary text-primary-foreground gap-1.5 text-xs"
                           >
@@ -210,7 +280,7 @@ function PublishingContent() {
                             Publish ({postPlatforms.length})
                           </Button>
                         ) : (
-                          <p className="text-xs text-muted-foreground text-right">Select platforms</p>
+                          <p className="text-xs text-muted-foreground">Select platforms →</p>
                         )}
                       </div>
                     </div>
@@ -237,7 +307,7 @@ function PublishingContent() {
                     <span className="text-lg">{(niche as any)?.emoji ?? "📝"}</span>
                     <div>
                       <p className="text-sm font-medium">{post.title}</p>
-                      <p className="text-xs text-muted-foreground">{niche?.label} · {post.platform}</p>
+                      <p className="text-xs text-muted-foreground">{niche?.label}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">

@@ -204,6 +204,7 @@ export async function upsertPlatformConnection(data: {
   accountName?: string;
   accountId?: string;
   accessToken?: string;
+  pageId?: string;
   isActive?: boolean;
 }) {
   const db = await getDb();
@@ -214,14 +215,49 @@ export async function upsertPlatformConnection(data: {
     .where(and(eq(platformConnections.userId, data.userId), eq(platformConnections.platform, data.platform)))
     .limit(1);
 
+  const updateData: Record<string, unknown> = {
+    accountName: data.accountName,
+    accountId: data.accountId,
+    isActive: data.isActive ?? true,
+  };
+  if (data.accessToken !== undefined) updateData.accessToken = data.accessToken;
+  if (data.pageId !== undefined) updateData.accountId = data.pageId; // reuse accountId for pageId
+
   if (existing.length > 0) {
     await db
       .update(platformConnections)
-      .set({ accountName: data.accountName, accountId: data.accountId, isActive: data.isActive ?? true })
+      .set(updateData)
       .where(eq(platformConnections.id, existing[0].id));
   } else {
-    await db.insert(platformConnections).values(data);
+    await db.insert(platformConnections).values({
+      userId: data.userId,
+      platform: data.platform,
+      accountName: data.accountName,
+      accountId: data.pageId ?? data.accountId,
+      accessToken: data.accessToken,
+      isActive: data.isActive ?? true,
+    });
   }
+}
+
+export async function disconnectPlatform(userId: number, platform: "facebook" | "instagram" | "tiktok") {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db
+    .update(platformConnections)
+    .set({ isActive: false, accessToken: null, accountId: null })
+    .where(and(eq(platformConnections.userId, userId), eq(platformConnections.platform, platform)));
+}
+
+export async function getPlatformConnectionWithToken(userId: number, platform: "facebook" | "instagram" | "tiktok") {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db
+    .select()
+    .from(platformConnections)
+    .where(and(eq(platformConnections.userId, userId), eq(platformConnections.platform, platform), eq(platformConnections.isActive, true)))
+    .limit(1);
+  return result[0];
 }
 
 // ─── Publish Log ───────────────────────────────────────────────────────────────

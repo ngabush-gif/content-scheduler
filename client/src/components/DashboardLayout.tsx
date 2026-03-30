@@ -33,6 +33,7 @@ import {
   LayoutDashboard,
   LogOut,
   PanelLeft,
+  PlugZap,
   Send,
   Settings,
   Sparkles,
@@ -53,6 +54,7 @@ const menuItems = [
   { icon: BookOpen, label: "Content Library", path: "/library", group: "content" },
   { icon: Calendar, label: "Calendar", path: "/calendar", group: "content" },
   { icon: Send, label: "Publishing", path: "/publish", group: "publish" },
+  { icon: PlugZap, label: "Connections", path: "/connections", group: "publish" },
   { icon: BarChart3, label: "Analytics", path: "/analytics", group: "publish" },
   { icon: Users, label: "Team", path: "/team", group: "settings", adminOnly: true },
 ];
