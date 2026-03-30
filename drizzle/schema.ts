@@ -1,22 +1,23 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import {
+  boolean,
+  int,
+  json,
+  mysqlEnum,
+  mysqlTable,
+  text,
+  timestamp,
+  varchar,
+} from "drizzle-orm/mysql-core";
 
-/**
- * Core user table backing auth flow.
- * Extend this file with additional tables as your product grows.
- * Columns use camelCase to match both database fields and generated types.
- */
+// ─── Users ────────────────────────────────────────────────────────────────────
 export const users = mysqlTable("users", {
-  /**
-   * Surrogate primary key. Auto-incremented numeric value managed by the database.
-   * Use this for relations between tables.
-   */
   id: int("id").autoincrement().primaryKey(),
-  /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  avatarUrl: text("avatarUrl"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -25,4 +26,100 @@ export const users = mysqlTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
-// TODO: Add your tables here
+// ─── Content Posts ─────────────────────────────────────────────────────────────
+export const contentPosts = mysqlTable("content_posts", {
+  id: int("id").autoincrement().primaryKey(),
+  authorId: int("authorId").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  niche: mysqlEnum("niche", [
+    "time_freedom",
+    "parents",
+    "side_hustlers",
+    "online_business",
+    "cultural",
+    "over_50",
+    "scam_survivors",
+  ]).notNull(),
+  platform: mysqlEnum("platform", ["facebook", "instagram", "tiktok", "all"]).notNull(),
+  contentType: mysqlEnum("contentType", ["caption", "script", "hashtags", "ideas", "full_post"]).notNull(),
+  caption: text("caption"),
+  hashtags: text("hashtags"),
+  script: text("script"),
+  ideas: text("ideas"),
+  fullContent: text("fullContent"),
+  tone: varchar("tone", { length: 100 }),
+  status: mysqlEnum("status", ["draft", "pending_review", "approved", "rejected", "published"]).default("draft").notNull(),
+  rejectionNote: text("rejectionNote"),
+  approvedById: int("approvedById"),
+  approvedAt: timestamp("approvedAt"),
+  publishedAt: timestamp("publishedAt"),
+  scheduledAt: timestamp("scheduledAt"),
+  isLibraryItem: boolean("isLibraryItem").default(false).notNull(),
+  tags: text("tags"), // JSON array of strings
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ContentPost = typeof contentPosts.$inferSelect;
+export type InsertContentPost = typeof contentPosts.$inferInsert;
+
+// ─── Approval History ──────────────────────────────────────────────────────────
+export const approvalHistory = mysqlTable("approval_history", {
+  id: int("id").autoincrement().primaryKey(),
+  postId: int("postId").notNull(),
+  reviewerId: int("reviewerId").notNull(),
+  action: mysqlEnum("action", ["submitted", "approved", "rejected", "revision_requested", "resubmitted"]).notNull(),
+  note: text("note"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ApprovalHistory = typeof approvalHistory.$inferSelect;
+export type InsertApprovalHistory = typeof approvalHistory.$inferInsert;
+
+// ─── Scheduled Posts ───────────────────────────────────────────────────────────
+export const scheduledPosts = mysqlTable("scheduled_posts", {
+  id: int("id").autoincrement().primaryKey(),
+  postId: int("postId").notNull(),
+  scheduledById: int("scheduledById").notNull(),
+  platform: mysqlEnum("platform", ["facebook", "instagram", "tiktok"]).notNull(),
+  scheduledAt: timestamp("scheduledAt").notNull(),
+  status: mysqlEnum("status", ["pending", "published", "failed", "cancelled"]).default("pending").notNull(),
+  publishedAt: timestamp("publishedAt"),
+  errorMessage: text("errorMessage"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ScheduledPost = typeof scheduledPosts.$inferSelect;
+export type InsertScheduledPost = typeof scheduledPosts.$inferInsert;
+
+// ─── Platform Connections ──────────────────────────────────────────────────────
+export const platformConnections = mysqlTable("platform_connections", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  platform: mysqlEnum("platform", ["facebook", "instagram", "tiktok"]).notNull(),
+  accountName: varchar("accountName", { length: 255 }),
+  accountId: varchar("accountId", { length: 255 }),
+  accessToken: text("accessToken"),
+  isActive: boolean("isActive").default(true).notNull(),
+  connectedAt: timestamp("connectedAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type PlatformConnection = typeof platformConnections.$inferSelect;
+export type InsertPlatformConnection = typeof platformConnections.$inferInsert;
+
+// ─── Publish Log ───────────────────────────────────────────────────────────────
+export const publishLog = mysqlTable("publish_log", {
+  id: int("id").autoincrement().primaryKey(),
+  postId: int("postId").notNull(),
+  publishedById: int("publishedById").notNull(),
+  platform: mysqlEnum("platform", ["facebook", "instagram", "tiktok"]).notNull(),
+  status: mysqlEnum("status", ["success", "failed"]).notNull(),
+  platformPostId: varchar("platformPostId", { length: 255 }),
+  errorMessage: text("errorMessage"),
+  publishedAt: timestamp("publishedAt").defaultNow().notNull(),
+});
+
+export type PublishLog = typeof publishLog.$inferSelect;
+export type InsertPublishLog = typeof publishLog.$inferInsert;
