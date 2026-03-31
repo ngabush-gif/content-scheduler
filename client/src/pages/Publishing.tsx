@@ -6,7 +6,7 @@ import { trpc } from "@/lib/trpc";
 import { NICHES, PLATFORMS } from "@shared/niches";
 import { useAuth } from "@/_core/hooks/useAuth";
 import {
-  AlertCircle, CheckCircle, Loader2, PlugZap, RefreshCw, Send, XCircle,
+  AlertCircle, Calendar, CheckCircle, Clock, Loader2, PlugZap, RefreshCw, Send, XCircle,
 } from "lucide-react";
 import { useState } from "react";
 import { useLocation } from "wouter";
@@ -27,6 +27,8 @@ function PublishingContent() {
   const [publishingId, setPublishingId] = useState<number | null>(null);
   const [selectedPlatforms, setSelectedPlatforms] = useState<Record<number, string[]>>({});
   const [publishResults, setPublishResults] = useState<Record<number, { platform: string; success: boolean; errorMessage?: string }[]>>({});
+  const [scheduleMode, setScheduleMode] = useState<Record<number, boolean>>({});
+  const [scheduleTimes, setScheduleTimes] = useState<Record<number, string>>({});
 
   const { data: approvedPosts, isLoading, refetch } = trpc.content.list.useQuery({ status: "approved" });
   const { data: publishedPosts } = trpc.content.list.useQuery({ status: "published" });
@@ -53,6 +55,18 @@ function PublishingContent() {
     },
     onError: (e) => {
       setPublishingId(null);
+      toast.error(e.message);
+    },
+  });
+
+  const scheduleMutation = trpc.publish.schedule.useMutation({
+    onSuccess: (data, vars) => {
+      utils.content.list.invalidate();
+      toast.success(data.message);
+      setScheduleMode((prev) => ({ ...prev, [vars.postId]: false }));
+      setScheduleTimes((prev) => ({ ...prev, [vars.postId]: "" }));
+    },
+    onError: (e) => {
       toast.error(e.message);
     },
   });
@@ -268,23 +282,61 @@ function PublishingContent() {
                       </div>
 
                       {/* Publish button */}
-                      <div className="shrink-0">
+                      <div className="shrink-0 space-y-2">
                         {postPlatforms.length > 0 ? (
-                          <Button
-                            size="sm"
-                            onClick={() => handlePublish(post.id, postPlatforms)}
-                            disabled={isPublishing}
-                            className="bg-primary text-primary-foreground gap-1.5 text-xs"
-                          >
-                            {isPublishing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
-                            Publish ({postPlatforms.length})
-                          </Button>
+                          <>
+                            <Button
+                              size="sm"
+                              onClick={() => handlePublish(post.id, postPlatforms)}
+                              disabled={isPublishing}
+                              className="bg-primary text-primary-foreground gap-1.5 text-xs w-full"
+                            >
+                              {isPublishing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                              Publish Now ({postPlatforms.length})
+                            </Button>
+                            <button
+                              onClick={() => setScheduleMode((prev) => ({ ...prev, [post.id]: !prev[post.id] }))}
+                              className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 justify-center w-full"
+                            >
+                              <Clock className="w-3 h-3" />
+                              Schedule for later
+                            </button>
+                            {scheduleMode[post.id] && (
+                              <div className="flex items-center gap-1.5 pt-1 border-t border-border/30">
+                                <input
+                                  type="datetime-local"
+                                  value={scheduleTimes[post.id] ?? ""}
+                                  onChange={(e) => setScheduleTimes((prev) => ({ ...prev, [post.id]: e.target.value }))}
+                                  className="text-xs px-2 py-1 rounded bg-card border border-border/50 text-foreground flex-1 h-7"
+                                />
+                                <Button
+                                  size="sm"
+                                  onClick={() => {
+                                    if (!scheduleTimes[post.id]) {
+                                      toast.error("Please select a time");
+                                      return;
+                                    }
+                                    const scheduledDate = new Date(scheduleTimes[post.id]);
+                                    scheduleMutation.mutate({
+                                      postId: post.id,
+                                      platforms: postPlatforms as any,
+                                      scheduledAt: scheduledDate,
+                                    });
+                                  }}
+                                  disabled={scheduleMutation.isPending}
+                                  className="bg-primary/80 text-primary-foreground text-xs h-7 px-2"
+                                >
+                                  {scheduleMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Schedule"}
+                                </Button>
+                              </div>
+                            )}
+                          </>
                         ) : (
                           <p className="text-xs text-muted-foreground">Select platforms →</p>
                         )}
                       </div>
-                    </div>
-                  </CardContent>
+
+                    </div>             </CardContent>
                 </Card>
               );
             })}

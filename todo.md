@@ -62,3 +62,17 @@
 - [x] Instagram publish: clear error when no media URL is present (placeholder image used as fallback)
 - [x] TikTok publish: clear error message when no video URL is attached to post
 - [x] Platform Connections page shows last test result inline (not only toast)
+
+## Scheduled Auto-Publishing
+- [x] Add scheduledPublishTime column to posts table (already in schema)
+- [x] Backend: scheduled publishing job that runs every 2 minutes to check for due posts
+- [x] Backend: auto-publish due posts to all connected platforms
+- [x] Backend: update post status to "published" and store publish timestamps
+- [x] Backend: handle publish errors gracefully (error logging, status tracking)
+- [x] Backend: Initialize scheduled job on server startup
+- [ ] Frontend: Calendar page shows scheduled publish time for each post
+- [x] Frontend: Publishing page shows "Schedule for later" vs "Publish now" options
+- [x] Frontend: Set publish time when publishing posts
+- [ ] Frontend: Show countdown timer for upcoming scheduled posts
+- [x] Backend: schedule procedure persists scheduled posts to database
+- [x] Frontend: Schedule button calls backend mutation and saves to database

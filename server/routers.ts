@@ -669,6 +669,43 @@ Return JSON with:
       .query(async ({ input }) => {
         return getPublishLog(input.postId);
       }),
+    schedule: protectedProcedure
+      .input(
+        z.object({
+          postId: z.number(),
+          platforms: z.array(z.enum(["facebook", "instagram", "tiktok"])),
+          scheduledAt: z.date(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const post = await getContentPostById(input.postId);
+        if (!post) throw new TRPCError({ code: "NOT_FOUND" });
+        if (post.status !== "approved") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Only approved posts can be scheduled" });
+        }
+
+        // Validate scheduled time is in the future
+        if (input.scheduledAt <= new Date()) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Scheduled time must be in the future" });
+        }
+
+        // Create scheduled posts for each platform
+        for (const platform of input.platforms) {
+          await createScheduledPost({
+            postId: input.postId,
+            scheduledById: ctx.user.id,
+            platform: platform as any,
+            scheduledAt: input.scheduledAt,
+            status: "pending",
+          });
+        }
+
+        // Update post with scheduled time
+        await updateContentPost(input.postId, { scheduledAt: input.scheduledAt });
+
+        return { success: true, message: `Post scheduled for ${input.scheduledAt.toLocaleString()}` };
+      }),
+
   }),
 
   // ─── Analytics ────────────────────────────────────────────────────────────
