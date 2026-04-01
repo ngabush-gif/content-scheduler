@@ -321,13 +321,18 @@ Return JSON with:
         } else if (input.contentType === "hashtags") {
           userPrompt = `${topicContext}
 
-Generate a strategic set of hashtags for ${platform?.label || "social media"} targeting ${niche?.label || "this audience"}.
+Generate EXACTLY 5 hashtags for ${platform?.label || "social media"} targeting ${niche?.label || "this audience"}.
+
+IMPORTANT: These 5 hashtags must:
+1. Match the caption style and theme of the post
+2. Reflect the tone and audience of the ${niche?.label || "audience"}
+3. Be highly relevant and authentic (not generic)
+4. Mix niche-specific and broader hashtags for reach
+5. Feel natural with the content, not forced
 
 Return JSON with:
-- primary: array of 5 highly targeted niche hashtags
-- secondary: array of 10 medium-reach relevant hashtags
-- trending: array of 5 broader trending hashtags
-- fullSet: all hashtags combined as a single string`;
+- hashtags: array of exactly 5 hashtags that match the caption tone and theme
+- fullSet: all 5 hashtags as a single string ready to post`;
 
           responseSchema = {
             type: "json_schema",
@@ -337,12 +342,10 @@ Return JSON with:
               schema: {
                 type: "object",
                 properties: {
-                  primary: { type: "array", items: { type: "string" } },
-                  secondary: { type: "array", items: { type: "string" } },
-                  trending: { type: "array", items: { type: "string" } },
+                  hashtags: { type: "array", items: { type: "string" }, minItems: 5, maxItems: 5 },
                   fullSet: { type: "string" },
                 },
-                required: ["primary", "secondary", "trending", "fullSet"],
+                required: ["hashtags", "fullSet"],
                 additionalProperties: false,
               },
             },

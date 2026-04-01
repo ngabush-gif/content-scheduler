@@ -76,3 +76,7 @@
 - [x] Backend: schedule procedure persists scheduled posts to database
 - [x] Frontend: Schedule button calls backend mutation and saves to database
 - [x] Frontend: Show countdown timer for upcoming scheduled posts (times displayed in calendar and upcoming list)
+
+## User Refinements
+- [x] AI Generator: Limit hashtags to maximum 5 per post
+- [x] AI Generator: Hashtags must match caption style and theme of the post

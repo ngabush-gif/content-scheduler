@@ -384,27 +384,15 @@ function GeneratedContentDisplay({ content, onCopy }: { content: any; onCopy: (t
   if (type === "hashtags") {
     return (
       <div className="space-y-3">
-        {d.primary?.length > 0 && (
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Primary Hashtags</p>
-            <div className="flex flex-wrap gap-1.5">
-              {d.primary.map((h: string) => (
-                <Badge key={h} className="niche-side-hustlers text-xs cursor-pointer" onClick={() => onCopy(h)}>{h}</Badge>
-              ))}
-            </div>
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">5 Hashtags (Matched to Caption Style)</p>
+          <div className="flex flex-wrap gap-1.5">
+            {(d.hashtags || []).map((h: string) => (
+              <Badge key={h} className="bg-primary/20 text-primary text-xs cursor-pointer hover:bg-primary/30 transition-colors" onClick={() => onCopy(h)}>{h}</Badge>
+            ))}
           </div>
-        )}
-        {d.secondary?.length > 0 && (
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Secondary Hashtags</p>
-            <div className="flex flex-wrap gap-1.5">
-              {d.secondary.map((h: string) => (
-                <Badge key={h} variant="outline" className="text-xs cursor-pointer border-border/50" onClick={() => onCopy(h)}>{h}</Badge>
-              ))}
-            </div>
-          </div>
-        )}
-        {d.fullSet && <Section label="Full Set (copy all)" text={d.fullSet} />}
+        </div>
+        {d.fullSet && <Section label="Ready to Post" text={d.fullSet} />}
       </div>
     );
   }
