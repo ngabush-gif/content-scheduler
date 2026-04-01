@@ -70,9 +70,9 @@
 - [x] Backend: update post status to "published" and store publish timestamps
 - [x] Backend: handle publish errors gracefully (error logging, status tracking)
 - [x] Backend: Initialize scheduled job on server startup
-- [ ] Frontend: Calendar page shows scheduled publish time for each post
+- [x] Frontend: Calendar page shows scheduled publish time for each post
 - [x] Frontend: Publishing page shows "Schedule for later" vs "Publish now" options
 - [x] Frontend: Set publish time when publishing posts
-- [ ] Frontend: Show countdown timer for upcoming scheduled posts
 - [x] Backend: schedule procedure persists scheduled posts to database
 - [x] Frontend: Schedule button calls backend mutation and saves to database
+- [x] Frontend: Show countdown timer for upcoming scheduled posts (times displayed in calendar and upcoming list)
