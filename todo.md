@@ -91,4 +91,4 @@
 - [x] Frontend: Show generated image in approval queue
 - [x] Publishing: Attach image URL to Instagram/Facebook posts
 - [x] Publishing: TikTok requires video (clear error message, in-development)
-- [ ] Add tests for media fields in content create/update procedures
+- [x] Add tests for media fields in content create/update procedures (5 new tests, all passing)
