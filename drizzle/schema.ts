@@ -47,6 +47,7 @@ export const contentPosts = mysqlTable("content_posts", {
   script: text("script"),
   ideas: text("ideas"),
   fullContent: text("fullContent"),
+  imageUrl: text("imageUrl"), // URL to uploaded or AI-generated image
   tone: varchar("tone", { length: 100 }),
   status: mysqlEnum("status", ["draft", "pending_review", "approved", "rejected", "published"]).default("draft").notNull(),
   rejectionNote: text("rejectionNote"),
@@ -55,13 +56,29 @@ export const contentPosts = mysqlTable("content_posts", {
   publishedAt: timestamp("publishedAt"),
   scheduledAt: timestamp("scheduledAt"),
   isLibraryItem: boolean("isLibraryItem").default(false).notNull(),
+  aiGeneratedImage: boolean("aiGeneratedImage").default(false).notNull(), // Track if image was AI-generated
   tags: text("tags"), // JSON array of strings
+  mediaType: mysqlEnum("mediaType", ["none", "image", "video"]).default("none").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
 export type ContentPost = typeof contentPosts.$inferSelect;
 export type InsertContentPost = typeof contentPosts.$inferInsert;
+
+// ─── Media Uploads ────────────────────────────────────────────────────────────
+export const mediaUploads = mysqlTable("media_uploads", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  fileUrl: text("fileUrl").notNull(),
+  fileType: mysqlEnum("fileType", ["image", "video"]).notNull(),
+  fileName: varchar("fileName", { length: 255 }),
+  fileSize: int("fileSize"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type MediaUpload = typeof mediaUploads.$inferSelect;
+export type InsertMediaUpload = typeof mediaUploads.$inferInsert;
 
 // ─── Approval History ──────────────────────────────────────────────────────────
 export const approvalHistory = mysqlTable("approval_history", {

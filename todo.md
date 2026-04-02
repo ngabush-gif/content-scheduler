@@ -80,3 +80,15 @@
 ## User Refinements
 - [x] AI Generator: Limit hashtags to maximum 5 per post
 - [x] AI Generator: Hashtags must match caption style and theme of the post
+
+## Media Upload & AI Image Generation
+- [x] Database: Add imageUrl column to posts table for storing uploaded/generated images
+- [x] Backend: Image upload endpoint with S3 storage integration
+- [x] Backend: AI image generation procedure based on caption and niche
+- [x] Frontend: Image upload field in content creation flow
+- [x] Frontend: "Generate Image" button that calls AI image generation
+- [x] Frontend: Image preview in content editor
+- [x] Frontend: Show generated image in approval queue
+- [x] Publishing: Attach image URL to Instagram/Facebook posts
+- [x] Publishing: TikTok requires video (clear error message, in-development)
+- [ ] Add tests for media fields in content create/update procedures

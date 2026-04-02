@@ -17,6 +17,8 @@ export interface PostContent {
   ideas?: string | null;
   fullContent?: string | null;
   title: string;
+  imageUrl?: string | null;
+  mediaType?: 'none' | 'image' | 'video' | null;
 }
 
 /** Build the final text body to publish from a post */
@@ -49,9 +51,10 @@ export async function publishToInstagram(
     const { accessToken, accountId } = credentials;
 
     // Step 1: Create media container
-    // Instagram requires an image for feed posts. We use a text-card approach:
-    // If no image URL is stored, we publish as a caption-only container (requires image).
-    // We'll use a transparent 1x1 placeholder and rely on caption as the content.
+    // Instagram requires an image for feed posts.
+    // Use the provided imageUrl if available, otherwise use a branded placeholder.
+    const imageUrl = post.imageUrl || "https://placehold.co/1080x1080/0a0a0f/c9a84c?text=ContentCreatorHub";
+    
     const containerRes = await fetch(
       `https://graph.instagram.com/v21.0/${accountId}/media`,
       {
@@ -60,7 +63,7 @@ export async function publishToInstagram(
         body: JSON.stringify({
           caption: text,
           media_type: "IMAGE",
-          image_url: "https://placehold.co/1080x1080/0a0a0f/c9a84c?text=ContentCreatorHub",
+          image_url: imageUrl,
           access_token: accessToken,
         }),
       }

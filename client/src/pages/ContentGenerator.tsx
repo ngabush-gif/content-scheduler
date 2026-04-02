@@ -14,6 +14,7 @@ import {
   Save, Send, Sparkles, Video, Wand2, FileText,
 } from "lucide-react";
 import { useState } from "react";
+import { ImageUploadField } from "@/components/ImageUploadField";
 import { useLocation } from "wouter";
 
 type ContentTypeId = "caption" | "script" | "hashtags" | "ideas" | "full_post";
@@ -41,6 +42,8 @@ function GeneratorContent() {
   const [selectedContentType, setSelectedContentType] = useState<ContentTypeId>("full_post");
   const [topic, setTopic] = useState("");
   const [customTone, setCustomTone] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [isAiGenerated, setIsAiGenerated] = useState(false);
   const [generatedContent, setGeneratedContent] = useState<any>(null);
   const [postTitle, setPostTitle] = useState("");
   const [savedPostId, setSavedPostId] = useState<number | null>(null);
@@ -109,7 +112,10 @@ function GeneratorContent() {
       ideas: d.ideas ? JSON.stringify(d.ideas) : undefined,
       fullContent: d.fullPost || d.fullScript || d.caption,
       tone: customTone || niche?.tone,
-    });
+      imageUrl: imageUrl || undefined,
+      aiGeneratedImage: isAiGenerated,
+      mediaType: imageUrl ? (imageUrl.includes('video') ? 'video' : 'image') : 'none',
+    })
   };
 
   const handleSubmitForReview = async () => {
@@ -299,6 +305,20 @@ function GeneratorContent() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <GeneratedContentDisplay content={generatedContent} onCopy={copyToClipboard} />
+
+                {/* Image Upload */}
+                <div className="pt-3 border-t border-border/50 space-y-3">
+                  <Label className="text-xs text-muted-foreground mb-1.5 block">Add Image or Video</Label>
+                  <ImageUploadField
+                    onImageSelect={(url, isAi) => {
+                      setImageUrl(url);
+                      setIsAiGenerated(isAi);
+                    }}
+                    caption={generatedContent?.caption || topic}
+                    niche={selectedNiche || undefined}
+                    tone={customTone}
+                  />
+                </div>
 
                 {/* Save section */}
                 <div className="pt-3 border-t border-border/50 space-y-3">

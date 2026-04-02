@@ -30,6 +30,7 @@ import {
   upsertPlatformConnection,
 } from "./db";
 import { publishToFacebook, publishToInstagram, publishToTikTok } from "./platformPublisher";
+import { generateAIImage, uploadMediaFile, validateUploadedFile } from "./imageHandler";
 
 // ─── Admin guard ──────────────────────────────────────────────────────────────
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -87,6 +88,9 @@ export const appRouter = router({
           fullContent: z.string().optional(),
           tone: z.string().optional(),
           tags: z.string().optional(),
+          imageUrl: z.string().optional(),
+          aiGeneratedImage: z.boolean().optional(),
+          mediaType: z.enum(["none", "image", "video"]).optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -137,6 +141,9 @@ export const appRouter = router({
           fullContent: z.string().optional(),
           tone: z.string().optional(),
           tags: z.string().optional(),
+          imageUrl: z.string().optional(),
+          aiGeneratedImage: z.boolean().optional(),
+          mediaType: z.enum(["none", "image", "video"]).optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -711,6 +718,44 @@ Return JSON with:
 
   }),
 
+  // ─── Media & Images ──────────────────────────────────────────────────────────
+  media: router({
+    generateImage: protectedProcedure
+      .input(
+        z.object({
+          caption: z.string(),
+          niche: z.enum(["time_freedom", "parents", "side_hustlers", "online_business", "cultural", "over_50", "scam_survivors"]),
+          tone: z.string().optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const result = await generateAIImage(input.caption, input.niche, input.tone);
+        if (!result.success) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error || "Failed to generate image" });
+        }
+        return { url: result.url, success: true };
+      }),
+    uploadImage: protectedProcedure
+      .input(
+        z.object({
+          fileData: z.string(),
+          fileName: z.string(),
+          mimeType: z.string(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const fileBuffer = Buffer.from(input.fileData, "base64");
+        const validation = validateUploadedFile(fileBuffer, input.mimeType);
+        if (!validation.valid) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: validation.error || "Invalid file" });
+        }
+        const result = await uploadMediaFile(fileBuffer, input.fileName, input.mimeType, ctx.user.id);
+        if (!result.success) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error || "Failed to upload file" });
+        }
+        return { url: result.url, success: true };
+      }),
+  }),
   // ─── Analytics ────────────────────────────────────────────────────────────
   analytics: router({
     summary: protectedProcedure.query(async () => {

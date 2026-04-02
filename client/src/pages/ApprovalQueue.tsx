@@ -226,6 +226,21 @@ function ApprovalContent() {
                   </div>
                 </div>
               )}
+              {selectedPost.imageUrl && (
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Image Preview</p>
+                  <div className="bg-background/50 rounded-lg p-3 border border-border/30 overflow-hidden">
+                    <img
+                      src={selectedPost.imageUrl}
+                      alt="Post preview"
+                      className="w-full h-auto max-h-64 object-cover rounded"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
               {selectedPost.script && (
                 <div>
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Script</p>
