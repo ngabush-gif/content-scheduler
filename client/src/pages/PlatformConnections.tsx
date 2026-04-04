@@ -1,77 +1,75 @@
-import DashboardLayout from "@/components/DashboardLayout";
+"use client";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
 import {
-  AlertCircle, CheckCircle, ChevronDown, ChevronUp, ExternalLink,
-  Loader2, PlugZap, RefreshCw, Trash2, Wifi, WifiOff,
+  AlertCircle, CheckCircle, Copy, ExternalLink, Loader2, PlugZap, RefreshCw, Trash2, WifiOff,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import DashboardLayout from "@/components/DashboardLayout";
 
-interface PlatformConfig {
+interface PlatformGuide {
   id: "facebook" | "instagram" | "tiktok";
   label: string;
   emoji: string;
   color: string;
-  borderColor: string;
   description: string;
-  fields: {
-    key: "accessToken" | "accountId" | "accountName";
-    label: string;
-    placeholder: string;
-    type?: string;
-    required: boolean;
-    helpText: string;
-  }[];
-  docsUrl: string;
-  docsLabel: string;
-  setupSteps: string[];
+  tokenName: string;
+  tokenPlaceholder: string;
+  steps: { number: number; title: string; description: string; link?: string; linkText?: string }[];
+  tips: string[];
 }
 
-const PLATFORM_CONFIGS: PlatformConfig[] = [
+const PLATFORM_GUIDES: PlatformGuide[] = [
   {
     id: "instagram",
     label: "Instagram",
     emoji: "📸",
     color: "text-pink-400",
-    borderColor: "border-pink-400/20",
-    description: "Publish posts and reels to your Instagram Business or Creator account.",
-    fields: [
+    description: "Post to your Instagram Business or Creator account",
+    tokenName: "Access Token",
+    tokenPlaceholder: "Paste your Instagram access token here",
+    steps: [
       {
-        key: "accountName",
-        label: "Instagram Username",
-        placeholder: "@yourbusiness",
-        required: true,
-        helpText: "Your Instagram handle (for display only)",
+        number: 1,
+        title: "Go to Facebook Graph API Explorer",
+        description: "This is the easiest way to get your token.",
+        link: "https://developers.facebook.com/tools/explorer",
+        linkText: "Open Graph API Explorer →",
       },
       {
-        key: "accountId",
-        label: "Instagram Business Account ID",
-        placeholder: "17841400000000000",
-        required: true,
-        helpText: "Your numeric Instagram Business/Creator Account ID from Meta Business Suite",
+        number: 2,
+        title: "Select Your Instagram Account",
+        description: "In the dropdown at the top, select your Instagram Business or Creator account.",
       },
       {
-        key: "accessToken",
-        label: "Access Token",
-        placeholder: "EAABsbCS...",
-        type: "password",
-        required: true,
-        helpText: "User Access Token with instagram_basic and instagram_content_publish permissions",
+        number: 3,
+        title: "Generate Token",
+        description: "Click 'Generate Access Token' button. Copy the token that appears.",
+      },
+      {
+        number: 4,
+        title: "Get Your Account ID",
+        description: "Go to Meta Business Suite → Settings → Instagram Accounts → Copy the numeric ID.",
+        link: "https://business.facebook.com",
+        linkText: "Open Meta Business Suite →",
+      },
+      {
+        number: 5,
+        title: "Paste in ContentCreator Hub",
+        description: "Come back here and paste your token and account ID below.",
       },
     ],
-    docsUrl: "https://developers.facebook.com/docs/instagram-api/getting-started",
-    docsLabel: "Instagram Graph API Setup",
-    setupSteps: [
-      "Go to Meta for Developers → Create an App",
-      "Add the Instagram Graph API product",
-      "Connect your Instagram Business/Creator account",
-      "Generate a User Access Token with instagram_basic + instagram_content_publish scopes",
-      "Find your Account ID in Meta Business Suite → Settings → Instagram Accounts",
+    tips: [
+      "Your token is like a password — keep it private",
+      "Tokens expire after 60 days, so you may need to refresh it periodically",
+      "You can revoke access anytime by disconnecting here",
     ],
   },
   {
@@ -79,40 +77,42 @@ const PLATFORM_CONFIGS: PlatformConfig[] = [
     label: "Facebook",
     emoji: "📘",
     color: "text-blue-400",
-    borderColor: "border-blue-400/20",
-    description: "Publish posts directly to your Facebook Page.",
-    fields: [
+    description: "Post directly to your Facebook Page",
+    tokenName: "Access Token",
+    tokenPlaceholder: "Paste your Facebook access token here",
+    steps: [
       {
-        key: "accountName",
-        label: "Facebook Page Name",
-        placeholder: "My Business Page",
-        required: true,
-        helpText: "The name of your Facebook Page (for display only)",
+        number: 1,
+        title: "Go to Facebook Graph API Explorer",
+        description: "Same tool as Instagram — it works for both!",
+        link: "https://developers.facebook.com/tools/explorer",
+        linkText: "Open Graph API Explorer →",
       },
       {
-        key: "accountId",
-        label: "Page ID",
-        placeholder: "123456789012345",
-        required: true,
-        helpText: "Your Facebook Page ID — found in Page Settings → About → Page ID",
+        number: 2,
+        title: "Select Your Facebook Page",
+        description: "In the dropdown at the top, select your Facebook Page.",
       },
       {
-        key: "accessToken",
-        label: "Page Access Token",
-        placeholder: "EAABsbCS...",
-        type: "password",
-        required: true,
-        helpText: "Page Access Token with pages_manage_posts and pages_read_engagement permissions",
+        number: 3,
+        title: "Generate Token",
+        description: "Click 'Generate Access Token' button. Copy the token.",
+      },
+      {
+        number: 4,
+        title: "Get Your Page ID",
+        description: "Go to your Facebook Page → Settings → About → Find 'Page ID' and copy it.",
+      },
+      {
+        number: 5,
+        title: "Paste in ContentCreator Hub",
+        description: "Come back here and paste your token and page ID below.",
       },
     ],
-    docsUrl: "https://developers.facebook.com/docs/pages-api/posts",
-    docsLabel: "Facebook Pages API Setup",
-    setupSteps: [
-      "Go to Meta for Developers → Create an App",
-      "Add the Facebook Login product",
-      "Request pages_manage_posts and pages_read_engagement permissions",
-      "Generate a Page Access Token for your specific Page",
-      "Find your Page ID in Facebook Page Settings → About",
+    tips: [
+      "Make sure you're logged into the Facebook account that owns the page",
+      "Your token is like a password — keep it private",
+      "You can use the same token for both Facebook and Instagram if you want",
     ],
   },
   {
@@ -120,33 +120,42 @@ const PLATFORM_CONFIGS: PlatformConfig[] = [
     label: "TikTok",
     emoji: "🎵",
     color: "text-cyan-400",
-    borderColor: "border-cyan-400/20",
-    description: "Publish video content to your TikTok for Business account.",
-    fields: [
+    description: "Post videos to your TikTok for Business account",
+    tokenName: "Access Token",
+    tokenPlaceholder: "Paste your TikTok access token here",
+    steps: [
       {
-        key: "accountName",
-        label: "TikTok Username",
-        placeholder: "@yourbusiness",
-        required: true,
-        helpText: "Your TikTok handle (for display only)",
+        number: 1,
+        title: "Go to TikTok for Business",
+        description: "Create or log into your TikTok for Business account.",
+        link: "https://business.tiktok.com",
+        linkText: "Open TikTok for Business →",
       },
       {
-        key: "accessToken",
-        label: "Access Token",
-        placeholder: "act.example...",
-        type: "password",
-        required: true,
-        helpText: "OAuth2 Access Token with video.publish scope from TikTok for Business",
+        number: 2,
+        title: "Go to Creator Center",
+        description: "Click your profile → Creator Center → Tools → API",
+      },
+      {
+        number: 3,
+        title: "Create an App",
+        description: "Click 'Create App' and fill in the basic info about your app.",
+      },
+      {
+        number: 4,
+        title: "Generate Access Token",
+        description: "In your app settings, click 'Generate Access Token' and copy it.",
+      },
+      {
+        number: 5,
+        title: "Paste in ContentCreator Hub",
+        description: "Come back here and paste your token below.",
       },
     ],
-    docsUrl: "https://developers.tiktok.com/doc/content-posting-api-get-started",
-    docsLabel: "TikTok Content Posting API",
-    setupSteps: [
-      "Go to TikTok for Developers → Create an App",
-      "Add the Content Posting API product",
-      "Complete the app review process",
-      "Generate an OAuth2 Access Token with video.publish scope",
-      "Note: TikTok requires video content — text-only posts are not supported",
+    tips: [
+      "TikTok requires video content — text-only posts won't work",
+      "Your token is like a password — keep it private",
+      "Make sure your account is a TikTok for Business account (not a personal account)",
     ],
   },
 ];
@@ -163,13 +172,14 @@ function PlatformConnectionsContent() {
   const { data: connections, isLoading } = trpc.publish.platforms.useQuery();
   const utils = trpc.useUtils();
   const [testResults, setTestResults] = useState<Record<string, { success: boolean; message: string } | null>>({});
+  const [activeTab, setActiveTab] = useState("instagram");
 
   const connectMutation = trpc.publish.connectPlatform.useMutation({
     onSuccess: () => {
       utils.publish.platforms.invalidate();
-      toast.success("Platform connected successfully!");
+      toast.success("✓ Platform connected!");
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error("Connection failed: " + e.message),
   });
 
   const disconnectMutation = trpc.publish.disconnectPlatform.useMutation({
@@ -184,7 +194,7 @@ function PlatformConnectionsContent() {
   const testMutation = trpc.publish.testConnection.useMutation({
     onSuccess: (data, vars) => {
       setTestResults((prev) => ({ ...prev, [vars.platform]: { success: data.success, message: data.message } }));
-      if (data.success) toast.success(data.message);
+      if (data.success) toast.success("✓ " + data.message);
       else toast.error(data.message);
     },
     onError: (e, vars) => {
@@ -197,63 +207,128 @@ function PlatformConnectionsContent() {
     (connections ?? []).find((c: any) => c.platform === platformId && c.isActive);
 
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6">
+    <div className="p-6 max-w-5xl mx-auto space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-display font-semibold flex items-center gap-3">
-          <PlugZap className="w-6 h-6 text-primary" />
-          Platform Connections
+        <h1 className="text-3xl font-display font-semibold flex items-center gap-3 mb-2">
+          <PlugZap className="w-7 h-7 text-primary" />
+          Connect Your Accounts
         </h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Connect your own social media accounts to publish content directly from ContentCreator Hub.
-          Each team member connects their own accounts independently.
+        <p className="text-muted-foreground">
+          Follow the simple steps below to connect your social media accounts. Each team member connects their own accounts.
         </p>
       </div>
 
-      {/* Info Banner */}
+      {/* Security Banner */}
       <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 flex items-start gap-3">
-        <AlertCircle className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+        <CheckCircle className="w-4 h-4 text-primary shrink-0 mt-0.5" />
         <div className="text-xs text-muted-foreground leading-relaxed">
-          <span className="text-primary font-medium">Your credentials are stored securely</span> and only used
-          to publish on your behalf. Each team member manages their own platform connections.
-          Access tokens are never shared with other team members.
+          <span className="text-primary font-medium">Your credentials are safe</span> — stored securely and only used to post on your behalf. No other team members can see your tokens.
         </div>
       </div>
 
-      {/* Platform Cards */}
-      {isLoading ? (
-        <div className="space-y-4">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-24 rounded-xl bg-card/50 border border-border/30 animate-pulse" />
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-3">
+          {PLATFORM_GUIDES.map((guide) => (
+            <TabsTrigger key={guide.id} value={guide.id} className="flex items-center gap-2">
+              <span className="text-lg">{guide.emoji}</span>
+              <span className="hidden sm:inline">{guide.label}</span>
+            </TabsTrigger>
           ))}
-        </div>
-      ) : (
-        <div className="space-y-5">
-          {PLATFORM_CONFIGS.map((platform) => {
-            const conn = getConnection(platform.id);
-            return (
-              <PlatformCard
-                key={platform.id}
-                config={platform}
-                connection={conn}
-                testResult={testResults[platform.id] ?? null}
-                onConnect={(data) => connectMutation.mutate({ platform: platform.id, ...data })}
-                onDisconnect={() => disconnectMutation.mutate({ platform: platform.id })}
-                onTest={() => testMutation.mutate({ platform: platform.id })}
-                isConnecting={connectMutation.isPending}
-                isDisconnecting={disconnectMutation.isPending}
-                isTesting={testMutation.isPending && testMutation.variables?.platform === platform.id}
-              />
-            );
-          })}
-        </div>
-      )}
+        </TabsList>
+
+        {PLATFORM_GUIDES.map((guide) => {
+          const conn = getConnection(guide.id);
+          const testResult = testResults[guide.id];
+
+          return (
+            <TabsContent key={guide.id} value={guide.id} className="space-y-6 mt-6">
+              {/* Two Column Layout */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Left: Steps */}
+                <div className="space-y-4">
+                  <h2 className="font-semibold text-lg flex items-center gap-2">
+                    <span className="text-2xl">{guide.emoji}</span>
+                    How to Get Your {guide.label} Token
+                  </h2>
+
+                  <div className="space-y-3">
+                    {guide.steps.map((step) => (
+                      <div key={step.number} className="flex gap-4">
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center font-semibold text-sm text-primary">
+                          {step.number}
+                        </div>
+                        <div className="flex-1 pt-0.5">
+                          <h3 className="font-medium text-sm">{step.title}</h3>
+                          <p className="text-xs text-muted-foreground mt-1">{step.description}</p>
+                          {step.link && (
+                            <a
+                              href={step.link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-2"
+                            >
+                              {step.linkText}
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Tips */}
+                  <div className="mt-6 p-4 rounded-lg bg-muted/50 border border-border/50">
+                    <h4 className="text-xs font-semibold text-muted-foreground uppercase mb-2">💡 Tips</h4>
+                    <ul className="space-y-1">
+                      {guide.tips.map((tip, i) => (
+                        <li key={i} className="text-xs text-muted-foreground flex gap-2">
+                          <span className="text-primary">•</span>
+                          {tip}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+
+                {/* Right: Connection Form */}
+                <div>
+                  <ConnectionCard
+                    guide={guide}
+                    connection={conn}
+                    testResult={testResult}
+                    onConnect={(data) => connectMutation.mutate({ platform: guide.id, ...data })}
+                    onDisconnect={() => disconnectMutation.mutate({ platform: guide.id })}
+                    onTest={() => testMutation.mutate({ platform: guide.id })}
+                    isConnecting={connectMutation.isPending && connectMutation.variables?.platform === guide.id}
+                    isDisconnecting={disconnectMutation.isPending && disconnectMutation.variables?.platform === guide.id}
+                    isTesting={testMutation.isPending && testMutation.variables?.platform === guide.id}
+                  />
+                </div>
+              </div>
+            </TabsContent>
+          );
+        })}
+      </Tabs>
     </div>
   );
 }
 
-function PlatformCard({
-  config,
+interface ConnectionCardProps {
+  guide: PlatformGuide;
+  connection: any;
+  testResult: { success: boolean; message: string } | null;
+  onConnect: (data: any) => void;
+  onDisconnect: () => void;
+  onTest: () => void;
+  isConnecting: boolean;
+  isDisconnecting: boolean;
+  isTesting: boolean;
+}
+
+function ConnectionCard({
+  guide,
   connection,
   testResult,
   onConnect,
@@ -262,217 +337,151 @@ function PlatformCard({
   isConnecting,
   isDisconnecting,
   isTesting,
-}: {
-  config: PlatformConfig;
-  connection: any;
-  testResult: { success: boolean; message: string } | null;
-  onConnect: (data: { accountName: string; accessToken: string; accountId?: string }) => void;
-  onDisconnect: () => void;
-  onTest: () => void;
-  isConnecting: boolean;
-  isDisconnecting: boolean;
-  isTesting: boolean;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const [showSetup, setShowSetup] = useState(false);
-  const [formData, setFormData] = useState<Record<string, string>>({});
-  const handleTest = () => {
-    onTest();
-  };
+}: ConnectionCardProps) {
+  const [token, setToken] = useState("");
+  const [accountId, setAccountId] = useState("");
+  const [accountName, setAccountName] = useState("");
 
-  const isConnected = !!connection;
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const required = config.fields.filter((f) => f.required);
-    for (const field of required) {
-      if (!formData[field.key]?.trim()) {
-        toast.error(`${field.label} is required`);
-        return;
-      }
+  const handleConnect = () => {
+    if (!token.trim()) {
+      toast.error("Please paste your access token");
+      return;
     }
     onConnect({
-      accountName: formData.accountName ?? "",
-      accessToken: formData.accessToken ?? "",
-      accountId: formData.accountId,
+      accessToken: token,
+      accountId: accountId || undefined,
+      accountName: accountName || undefined,
     });
-    setExpanded(false);
-    setFormData({});
   };
 
   return (
-    <Card className={`bg-card border-border/50 transition-all ${isConnected ? `border-l-2 ${config.borderColor}` : ""}`}>
-      <CardContent className="p-5">
-        {/* Platform Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">{config.emoji}</span>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-semibold text-sm">{config.label}</h3>
-                {isConnected ? (
-                  <Badge className="bg-green-400/10 text-green-400 border-green-400/20 text-[10px] gap-1">
-                    <CheckCircle className="w-2.5 h-2.5" />
-                    Connected
-                  </Badge>
-                ) : (
-                  <Badge className="bg-secondary text-muted-foreground border-border/40 text-[10px] gap-1">
-                    <WifiOff className="w-2.5 h-2.5" />
-                    Not Connected
-                  </Badge>
-                )}
-              </div>
-              {isConnected ? (
-                <div className="mt-0.5 space-y-0.5">
-                  <p className="text-xs text-muted-foreground">
-                    Account: <span className="text-foreground font-medium">{connection.accountName}</span>
-                  </p>
-                  {testResult && (
-                    <p className={`text-[10px] flex items-center gap-1 ${testResult.success ? "text-green-400" : "text-destructive"}`}>
-                      {testResult.success ? <CheckCircle className="w-2.5 h-2.5" /> : <AlertCircle className="w-2.5 h-2.5" />}
-                      {testResult.message}
-                    </p>
-                  )}
+    <Card className="sticky top-6">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center justify-between">
+          <span>Your {guide.label} Account</span>
+          {connection && <Badge className="bg-green-500/20 text-green-400 border-green-500/30">Connected</Badge>}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {connection ? (
+          <>
+            {/* Connected State */}
+            <div className="space-y-3">
+              {connection.accountName && (
+                <div>
+                  <p className="text-xs text-muted-foreground">Account</p>
+                  <p className="text-sm font-medium">{connection.accountName}</p>
                 </div>
-              ) : (
-                <p className="text-xs text-muted-foreground mt-0.5">{config.description}</p>
               )}
-            </div>
-          </div>
+              {connection.accountId && (
+                <div>
+                  <p className="text-xs text-muted-foreground">ID</p>
+                  <p className="text-xs font-mono text-muted-foreground">{connection.accountId}</p>
+                </div>
+              )}
 
-          <div className="flex items-center gap-2">
-            {isConnected && (
-              <>
+              {/* Test Result */}
+              {testResult && (
+                <div className={`p-3 rounded-lg text-xs ${testResult.success ? "bg-green-500/10 border border-green-500/30 text-green-400" : "bg-red-500/10 border border-red-500/30 text-red-400"}`}>
+                  {testResult.success ? "✓ Connection working" : "✗ " + testResult.message}
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-2">
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={handleTest}
+                  onClick={onTest}
                   disabled={isTesting}
-                  className="border-border/50 text-xs h-7 px-2.5 gap-1.5"
+                  className="flex-1"
                 >
-                  {isTesting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wifi className="w-3 h-3" />}
+                  {isTesting ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
                   Test
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setExpanded(!expanded)}
-                  className="border-border/50 text-xs h-7 px-2.5 gap-1.5"
-                >
-                  <RefreshCw className="w-3 h-3" />
-                  Update
-                  {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={onDisconnect}
                   disabled={isDisconnecting}
-                  className="border-destructive/30 text-destructive hover:bg-destructive/10 text-xs h-7 px-2.5 gap-1.5"
+                  className="flex-1 text-red-400 hover:text-red-300"
                 >
-                  {isDisconnecting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                  {isDisconnecting ? <Loader2 className="w-3 h-3 animate-spin" /> : <WifiOff className="w-3 h-3" />}
                   Disconnect
                 </Button>
-              </>
-            )}
-            {!isConnected && (
-              <Button
-                size="sm"
-                onClick={() => setExpanded(!expanded)}
-                className="bg-primary text-primary-foreground text-xs h-7 px-3 gap-1.5"
-              >
-                <PlugZap className="w-3 h-3" />
-                Connect
-                {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-              </Button>
-            )}
-          </div>
-        </div>
-
-        {/* Expandable Form */}
-        {expanded && (
-          <div className="mt-5 pt-5 border-t border-border/40 space-y-4">
-            {/* Setup Guide Toggle */}
-            <button
-              onClick={() => setShowSetup(!showSetup)}
-              className="flex items-center gap-2 text-xs text-primary hover:underline"
-            >
-              <ExternalLink className="w-3 h-3" />
-              How to get your {config.label} credentials
-              {showSetup ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-            </button>
-
-            {showSetup && (
-              <div className="p-4 rounded-xl bg-accent/20 border border-border/30 space-y-2">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-semibold text-foreground">Setup Steps</p>
-                  <a
-                    href={config.docsUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[10px] text-primary hover:underline flex items-center gap-1"
-                  >
-                    <ExternalLink className="w-2.5 h-2.5" />
-                    {config.docsLabel}
-                  </a>
-                </div>
-                <ol className="space-y-1.5">
-                  {config.setupSteps.map((step, i) => (
-                    <li key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
-                      <span className="shrink-0 w-4 h-4 rounded-full bg-primary/10 text-primary text-[10px] flex items-center justify-center font-semibold mt-0.5">
-                        {i + 1}
-                      </span>
-                      {step}
-                    </li>
-                  ))}
-                </ol>
               </div>
-            )}
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Disconnected State */}
+            <div className="space-y-3">
+              <div>
+                <Label htmlFor={`token-${guide.id}`} className="text-xs">
+                  {guide.tokenName}
+                </Label>
+                <div className="flex gap-2 mt-1">
+                  <Input
+                    id={`token-${guide.id}`}
+                    type="password"
+                    placeholder={guide.tokenPlaceholder}
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                    className="text-xs"
+                    disabled={isConnecting}
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.readText().then((text) => setToken(text));
+                      toast.success("Pasted from clipboard");
+                    }}
+                  >
+                    <Copy className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
 
-            {/* Credential Form */}
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {config.fields.map((field) => (
-                <div key={field.key} className="space-y-1.5">
-                  <Label className="text-xs font-medium">
-                    {field.label}
-                    {field.required && <span className="text-destructive ml-1">*</span>}
+              {guide.id !== "tiktok" && (
+                <div>
+                  <Label htmlFor={`account-id-${guide.id}`} className="text-xs">
+                    Account ID
                   </Label>
                   <Input
-                    type={field.type ?? "text"}
-                    placeholder={field.placeholder}
-                    value={formData[field.key] ?? ""}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, [field.key]: e.target.value }))}
-                    className="bg-input border-border/50 text-sm h-9"
-                    autoComplete="off"
-                    autoCorrect="off"
-                    spellCheck={false}
+                    id={`account-id-${guide.id}`}
+                    placeholder="Numeric ID"
+                    value={accountId}
+                    onChange={(e) => setAccountId(e.target.value)}
+                    className="text-xs mt-1"
+                    disabled={isConnecting}
                   />
-                  <p className="text-[10px] text-muted-foreground/70">{field.helpText}</p>
                 </div>
-              ))}
+              )}
 
-              <div className="flex items-center gap-3 pt-1">
-                <Button
-                  type="submit"
-                  size="sm"
+              <div>
+                <Label htmlFor={`account-name-${guide.id}`} className="text-xs">
+                  Account Name (optional)
+                </Label>
+                <Input
+                  id={`account-name-${guide.id}`}
+                  placeholder="e.g., My Business"
+                  value={accountName}
+                  onChange={(e) => setAccountName(e.target.value)}
+                  className="text-xs mt-1"
                   disabled={isConnecting}
-                  className="bg-primary text-primary-foreground gap-1.5 text-xs"
-                >
-                  {isConnecting ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
-                  {isConnected ? "Update Credentials" : `Connect ${config.label}`}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => { setExpanded(false); setFormData({}); }}
-                  className="border-border/50 text-xs"
-                >
-                  Cancel
-                </Button>
+                />
               </div>
-            </form>
-          </div>
+
+              <Button
+                onClick={handleConnect}
+                disabled={isConnecting || !token.trim()}
+                className="w-full"
+              >
+                {isConnecting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlugZap className="w-4 h-4 mr-2" />}
+                Connect {guide.label}
+              </Button>
+            </div>
+          </>
         )}
       </CardContent>
     </Card>

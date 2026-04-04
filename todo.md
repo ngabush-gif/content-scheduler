@@ -92,3 +92,13 @@
 - [x] Publishing: Attach image URL to Instagram/Facebook posts
 - [x] Publishing: TikTok requires video (clear error message, in-development)
 - [x] Add tests for media fields in content create/update procedures (5 new tests, all passing)
+
+## Simplified Platform Connection UX (Beginner-Friendly)
+- [x] Update Platform Connections page with visual step-by-step guides (no developer setup needed)
+- [x] Add direct links to Facebook/Instagram token generation
+- [x] Add direct links to TikTok token generation
+- [x] Add copy-paste helper buttons for tokens
+- [x] Simplify error messages to be beginner-friendly
+- [x] Add inline tutorial sections with clear instructions
+- [x] Two-column layout: steps on left, connection form on right
+- [x] Tabbed interface for easy platform switching
