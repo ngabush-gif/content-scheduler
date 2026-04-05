@@ -121,3 +121,13 @@
 - [x] Update TikTok to use direct link approach (opens TikTok.com with pre-filled caption)
 - [x] Simplify Platform Connections page (remove token management UI, show direct-link info)
 - [x] All 17 tests passing, zero TypeScript errors
+
+## Option B - Copy-to-Clipboard with Instructions (CURRENT)
+- [x] Add modal dialog that shows when user clicks platform button
+- [x] Copy caption + hashtags to clipboard automatically
+- [x] Display step-by-step instructions: "Caption copied! Click 'Open [Platform]' to paste"
+- [x] Open platform scheduler after user confirms
+- [x] Show success confirmation
+- [x] Test copy functionality works on all platforms (Facebook, Instagram, TikTok)
+- [x] Test platform links open correctly
+- [x] All tests passing (17 tests), zero TypeScript errors
