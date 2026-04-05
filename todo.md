@@ -102,3 +102,13 @@
 - [x] Add inline tutorial sections with clear instructions
 - [x] Two-column layout: steps on left, connection form on right
 - [x] Tabbed interface for easy platform switching
+
+## Bulk Content Generation & Templates
+- [x] Database: Add contentTemplates table with template name, niche, category, prompt, example content
+- [x] Backend: Create/read/update/delete template procedures
+- [x] Backend: Bulk generate procedure that creates N posts from a single prompt
+- [x] Frontend: Content Templates management page (admin only) to create/edit/delete templates
+- [x] Frontend: Template selection in bulk generation page
+- [x] Frontend: "Generate Bulk" button that generates 1-20 posts at once
+- [x] Frontend: Bulk generation with niche/platform/tone/count controls
+- [x] All tests passing (17 tests total)

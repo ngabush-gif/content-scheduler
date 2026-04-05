@@ -11,21 +11,28 @@ import {
   addPublishLog,
   createContentPost,
   createScheduledPost,
+  createTemplate,
   deleteContentPost,
   deleteScheduledPost,
+  deleteTemplate,
   disconnectPlatform,
   getAllContentPosts,
+  getAllTemplates,
   getAllUsers,
   getAnalyticsSummary,
   getApprovalHistoryByPost,
   getContentPostById,
   getContentPostsByAuthor,
+  getDefaultTemplates,
   getPlatformConnectionWithToken,
   getPlatformConnections,
   getPublishLog,
   getScheduledPosts,
+  getTemplate,
+  getTemplatesByNiche,
   updateContentPost,
   updateScheduledPost,
+  updateTemplate,
   updateUserRole,
   upsertPlatformConnection,
 } from "./db";
@@ -756,6 +763,148 @@ Return JSON with:
         return { url: result.url, success: true };
       }),
   }),
+
+  // ─── Content Templates ────────────────────────────────────────────────────
+  templates: router({
+    list: protectedProcedure.query(async () => {
+      return getAllTemplates();
+    }),
+    listByNiche: protectedProcedure
+      .input(z.object({ niche: z.string() }))
+      .query(async ({ input }) => {
+        return getTemplatesByNiche(input.niche);
+      }),
+    defaults: protectedProcedure.query(async () => {
+      return getDefaultTemplates();
+    }),
+    get: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        return getTemplate(input.id);
+      }),
+    create: adminProcedure
+      .input(
+        z.object({
+          name: z.string(),
+          description: z.string().optional(),
+          niche: z.enum(["time_freedom", "parents", "side_hustlers", "online_business", "cultural", "over_50", "scam_survivors"]),
+          category: z.string(),
+          prompt: z.string(),
+          exampleContent: z.string().optional(),
+          isDefault: z.boolean().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        await createTemplate({
+          ...input,
+          createdById: ctx.user.id,
+          isDefault: input.isDefault ?? false,
+        });
+        return { success: true };
+      }),
+    update: adminProcedure
+      .input(
+        z.object({
+          id: z.number(),
+          name: z.string().optional(),
+          description: z.string().optional(),
+          category: z.string().optional(),
+          prompt: z.string().optional(),
+          exampleContent: z.string().optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        await updateTemplate(id, data);
+        return { success: true };
+      }),
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await deleteTemplate(input.id);
+        return { success: true };
+      }),
+  }),
+
+  // ─── Bulk Generation ──────────────────────────────────────────────────────
+  bulk: router({
+    generate: protectedProcedure
+      .input(
+        z.object({
+          templateId: z.number().optional(),
+          niche: z.enum(["time_freedom", "parents", "side_hustlers", "online_business", "cultural", "over_50", "scam_survivors"]),
+          platform: z.enum(["facebook", "instagram", "tiktok", "all"]),
+          tone: z.string().optional(),
+          customPrompt: z.string().optional(),
+          count: z.number().min(1).max(20),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        let prompt = input.customPrompt || "";
+        if (input.templateId) {
+          const template = await getTemplate(input.templateId);
+          if (template) prompt = template.prompt;
+        }
+        if (!prompt) throw new TRPCError({ code: "BAD_REQUEST", message: "No prompt provided" });
+
+        const posts = [];
+        for (let i = 0; i < input.count; i++) {
+          const response = await invokeLLM({
+            messages: [
+              {
+                role: "system",
+                content: `You are a social media content creator for the "${input.niche}" audience niche. Create engaging, authentic content. Tone: ${input.tone || "professional and engaging"}. Generate a social media post with caption (max 300 chars), exactly 5 hashtags matching the caption style, and a brief script idea.`,
+              },
+              {
+                role: "user",
+                content: `${prompt}
+
+Generate post #${i + 1}. Return JSON with: {"caption": "...", "hashtags": "#tag1 #tag2 #tag3 #tag4 #tag5", "script": "...", "ideas": "..."}`,
+              },
+            ],
+            response_format: {
+              type: "json_schema",
+              json_schema: {
+                name: "social_post",
+                strict: true,
+                schema: {
+                  type: "object",
+                  properties: {
+                    caption: { type: "string" },
+                    hashtags: { type: "string" },
+                    script: { type: "string" },
+                    ideas: { type: "string" },
+                  },
+                  required: ["caption", "hashtags", "script", "ideas"],
+                  additionalProperties: false,
+                },
+              },
+            },
+          });
+
+          const msgContent = response.choices[0]?.message.content;
+          const contentStr = typeof msgContent === 'string' ? msgContent : JSON.stringify(msgContent);
+          const content = JSON.parse(contentStr || "{}");
+          const post = await createContentPost({
+            authorId: ctx.user.id,
+            title: content.caption?.substring(0, 100) || "Bulk Generated Post",
+            niche: input.niche as any,
+            platform: input.platform as any,
+            contentType: "full_post",
+            caption: content.caption,
+            hashtags: content.hashtags,
+            script: content.script,
+            ideas: content.ideas,
+            tone: input.tone,
+            status: "draft",
+          });
+          posts.push(post);
+        }
+
+        return { success: true, posts, count: posts.length };
+      }),
+  }),
+
   // ─── Analytics ────────────────────────────────────────────────────────────
   analytics: router({
     summary: protectedProcedure.query(async () => {

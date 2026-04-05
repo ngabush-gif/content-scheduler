@@ -3,8 +3,10 @@ import { drizzle } from "drizzle-orm/mysql2";
 import {
   approvalHistory,
   contentPosts,
+  contentTemplates,
   InsertApprovalHistory,
   InsertContentPost,
+  InsertContentTemplate,
   InsertScheduledPost,
   InsertUser,
   platformConnections,
@@ -322,4 +324,50 @@ export async function getAnalyticsSummary() {
     nicheBreakdown,
     recentActivity,
   };
+}
+
+// ─── Content Templates ────────────────────────────────────────────────────────
+
+export async function createTemplate(data: InsertContentTemplate) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const result = await db.insert(contentTemplates).values(data);
+  return result;
+}
+
+export async function getTemplatesByNiche(niche: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(contentTemplates).where(eq(contentTemplates.niche, niche as any)).orderBy(contentTemplates.category);
+}
+
+export async function getAllTemplates() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(contentTemplates).orderBy(contentTemplates.niche, contentTemplates.category);
+}
+
+export async function getDefaultTemplates() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(contentTemplates).where(eq(contentTemplates.isDefault, true)).orderBy(contentTemplates.niche, contentTemplates.category);
+}
+
+export async function updateTemplate(id: number, data: Partial<InsertContentTemplate>) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(contentTemplates).set(data).where(eq(contentTemplates.id, id));
+}
+
+export async function deleteTemplate(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.delete(contentTemplates).where(eq(contentTemplates.id, id));
+}
+
+export async function getTemplate(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(contentTemplates).where(eq(contentTemplates.id, id)).limit(1);
+  return result[0];
 }

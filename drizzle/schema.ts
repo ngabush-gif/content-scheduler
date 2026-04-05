@@ -140,3 +140,29 @@ export const publishLog = mysqlTable("publish_log", {
 
 export type PublishLog = typeof publishLog.$inferSelect;
 export type InsertPublishLog = typeof publishLog.$inferInsert;
+
+// Content Templates
+export const contentTemplates = mysqlTable("content_templates", {
+  id: int("id").autoincrement().primaryKey(),
+  createdById: int("createdById").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  niche: mysqlEnum("niche", [
+    "time_freedom",
+    "parents",
+    "side_hustlers",
+    "online_business",
+    "cultural",
+    "over_50",
+    "scam_survivors",
+  ]).notNull(),
+  category: varchar("category", { length: 100 }).notNull(),
+  prompt: text("prompt").notNull(),
+  exampleContent: text("exampleContent"),
+  isDefault: boolean("isDefault").default(false).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ContentTemplate = typeof contentTemplates.$inferSelect;
+export type InsertContentTemplate = typeof contentTemplates.$inferInsert;
