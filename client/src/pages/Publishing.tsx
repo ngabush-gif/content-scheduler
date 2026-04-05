@@ -40,6 +40,7 @@ interface PublishDialogState {
   platform: string | null;
   caption: string;
   hashtags: string;
+  imageUrl: string | null;
   postId: number | null;
 }
 
@@ -55,6 +56,7 @@ function PublishingContent() {
     platform: null,
     caption: "",
     hashtags: "",
+    imageUrl: null,
     postId: null,
   });
   const [copied, setCopied] = useState(false);
@@ -94,6 +96,7 @@ function PublishingContent() {
     platform: string,
     caption: string,
     hashtags: string,
+    imageUrl: string | null,
     postId: number
   ) => {
     setPublishDialog({
@@ -101,17 +104,23 @@ function PublishingContent() {
       platform,
       caption,
       hashtags,
+      imageUrl,
       postId,
     });
     setCopied(false);
   };
 
   const copyContentToClipboard = async () => {
-    const { caption, hashtags } = publishDialog;
+    const { caption, hashtags, imageUrl } = publishDialog;
     let textToCopy = caption;
 
     if (hashtags) {
       textToCopy = `${caption}\n\n${hashtags}`;
+    }
+
+    // Add image URL if available
+    if (imageUrl) {
+      textToCopy = `${textToCopy}\n\nImage: ${imageUrl}`;
     }
 
     try {
@@ -143,6 +152,7 @@ function PublishingContent() {
         platform: null,
         caption: "",
         hashtags: "",
+        imageUrl: null,
         postId: null,
       });
     }, 500);
@@ -295,6 +305,7 @@ function PublishingContent() {
                                   "facebook",
                                   post.caption || "",
                                   post.hashtags || "",
+                                  post.imageUrl || null,
                                   post.id
                                 )
                               }
@@ -313,6 +324,7 @@ function PublishingContent() {
                                   "instagram",
                                   post.caption || "",
                                   post.hashtags || "",
+                                  post.imageUrl || null,
                                   post.id
                                 )
                               }
@@ -331,6 +343,7 @@ function PublishingContent() {
                                   "tiktok",
                                   post.caption || "",
                                   "",
+                                  post.imageUrl || null,
                                   post.id
                                 )
                               }
@@ -402,6 +415,7 @@ function PublishingContent() {
               platform: null,
               caption: "",
               hashtags: "",
+              imageUrl: null,
               postId: null,
             });
           }
@@ -438,6 +452,17 @@ function PublishingContent() {
                     Hashtags:
                   </p>
                   <p className="text-sm">{publishDialog.hashtags}</p>
+                </div>
+              )}
+
+              {publishDialog.imageUrl && (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-1">
+                    Image URL:
+                  </p>
+                  <p className="text-sm break-all text-blue-600 dark:text-blue-400">
+                    {publishDialog.imageUrl}
+                  </p>
                 </div>
               )}
             </div>

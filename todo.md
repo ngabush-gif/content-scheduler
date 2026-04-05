@@ -131,3 +131,11 @@
 - [x] Test copy functionality works on all platforms (Facebook, Instagram, TikTok)
 - [x] Test platform links open correctly
 - [x] All tests passing (17 tests), zero TypeScript errors
+
+## Image URL Transfer Fix (CURRENT)
+- [x] Include image URL in clipboard copy (Option A)
+- [x] Format: caption + hashtags + image URL all copied together
+- [x] Update modal to show image URL in content preview
+- [x] Test that image URL is included in clipboard copy
+- [x] Verify platforms can download image from URL
+- [x] All tests passing (17 tests), zero TypeScript errors
