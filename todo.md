@@ -112,3 +112,12 @@
 - [x] Frontend: "Generate Bulk" button that generates 1-20 posts at once
 - [x] Frontend: Bulk generation with niche/platform/tone/count controls
 - [x] All tests passing (17 tests total)
+
+## Simplified Publishing (Option 2: Direct Platform Links)
+- [x] Replace API-based Facebook/Instagram publishing with direct Meta Creator Studio links
+- [x] Update Publishing page to show "Schedule on Facebook" button that opens Creator Studio
+- [x] Update Publishing page to show "Schedule on Instagram" button that opens Instagram scheduler
+- [x] Pre-fill caption/hashtags in the URLs when opening platform schedulers (auto-copy to clipboard)
+- [x] Update TikTok to use direct link approach (opens TikTok.com with pre-filled caption)
+- [x] Simplify Platform Connections page (remove token management UI, show direct-link info)
+- [x] All 17 tests passing, zero TypeScript errors

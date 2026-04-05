@@ -6,7 +6,7 @@ import { trpc } from "@/lib/trpc";
 import { NICHES, PLATFORMS } from "@shared/niches";
 import { useAuth } from "@/_core/hooks/useAuth";
 import {
-  AlertCircle, Calendar, CheckCircle, Clock, Loader2, PlugZap, RefreshCw, Send, XCircle,
+  AlertCircle, Calendar, CheckCircle, Copy, ExternalLink, Loader2, Send, XCircle,
 } from "lucide-react";
 import { useState } from "react";
 import { useLocation } from "wouter";
@@ -24,47 +24,17 @@ function PublishingContent() {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const isAdmin = user?.role === "admin";
-  const [publishingId, setPublishingId] = useState<number | null>(null);
   const [selectedPlatforms, setSelectedPlatforms] = useState<Record<number, string[]>>({});
-  const [publishResults, setPublishResults] = useState<Record<number, { platform: string; success: boolean; errorMessage?: string }[]>>({});
-  const [scheduleMode, setScheduleMode] = useState<Record<number, boolean>>({});
-  const [scheduleTimes, setScheduleTimes] = useState<Record<number, string>>({});
 
-  const { data: approvedPosts, isLoading, refetch } = trpc.content.list.useQuery({ status: "approved" });
+  const { data: approvedPosts, isLoading } = trpc.content.list.useQuery({ status: "approved" });
   const { data: publishedPosts } = trpc.content.list.useQuery({ status: "published" });
-  const { data: connections } = trpc.publish.platforms.useQuery();
 
   const utils = trpc.useUtils();
 
   const publishMutation = trpc.publish.post.useMutation({
     onSuccess: (data, vars) => {
       utils.content.list.invalidate();
-      setPublishingId(null);
-      setPublishResults((prev) => ({ ...prev, [vars.postId]: data.results }));
-
-      const succeeded = data.results.filter((r) => r.success);
-      const failed = data.results.filter((r) => !r.success);
-
-      if (succeeded.length > 0 && failed.length === 0) {
-        toast.success(`Published to ${succeeded.map((r) => r.platform).join(", ")}!`);
-      } else if (succeeded.length > 0 && failed.length > 0) {
-        toast.warning(`Published to ${succeeded.map((r) => r.platform).join(", ")}. Failed: ${failed.map((r) => r.platform).join(", ")}`);
-      } else {
-        toast.error("Publishing failed on all selected platforms");
-      }
-    },
-    onError: (e) => {
-      setPublishingId(null);
-      toast.error(e.message);
-    },
-  });
-
-  const scheduleMutation = trpc.publish.schedule.useMutation({
-    onSuccess: (data, vars) => {
-      utils.content.list.invalidate();
-      toast.success(data.message);
-      setScheduleMode((prev) => ({ ...prev, [vars.postId]: false }));
-      setScheduleTimes((prev) => ({ ...prev, [vars.postId]: "" }));
+      toast.success(`Post marked as published!`);
     },
     onError: (e) => {
       toast.error(e.message);
@@ -83,295 +53,237 @@ function PublishingContent() {
     });
   };
 
-  const handlePublish = (postId: number, platforms: string[]) => {
-    setPublishingId(postId);
-    setPublishResults((prev) => ({ ...prev, [postId]: [] }));
-    publishMutation.mutate({ postId, platforms: platforms as any });
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success("Copied to clipboard!");
   };
 
-  const getConnectionStatus = (platformId: string) => {
-    const conn = (connections ?? []).find((c: any) => c.platform === platformId);
-    return conn?.isActive ? conn : null;
+  const openPlatformScheduler = (platform: string, caption: string, hashtags: string) => {
+    const fullText = `${caption}\n\n${hashtags}`;
+
+    if (platform === "facebook") {
+      // Open Meta Creator Studio
+      const url = "https://business.facebook.com/creatorstudio";
+      window.open(url, "_blank");
+      // Copy text to clipboard for easy pasting
+      copyToClipboard(fullText);
+    } else if (platform === "instagram") {
+      // Open Instagram web
+      const url = "https://instagram.com";
+      window.open(url, "_blank");
+      copyToClipboard(fullText);
+    } else if (platform === "tiktok") {
+      // Open TikTok upload
+      const url = "https://www.tiktok.com/upload";
+      window.open(url, "_blank");
+      copyToClipboard(caption); // TikTok uses captions differently
+    }
+  };
+
+  const markAsPublished = (postId: number, platforms: string[]) => {
+    publishMutation.mutate({ postId, platforms: platforms as any });
   };
 
   if (!isAdmin) {
     return (
       <div className="p-6 text-center py-20">
         <XCircle className="w-10 h-10 mx-auto mb-4 text-destructive/50" />
-        <p className="text-muted-foreground">Admin access required to publish content</p>
-        <Button className="mt-4" onClick={() => setLocation("/dashboard")}>Back to Dashboard</Button>
+        <h2 className="text-xl font-semibold mb-2">Admin Only</h2>
+        <p className="text-muted-foreground">Only admins can publish posts.</p>
       </div>
     );
   }
 
-  const connectedCount = PLATFORMS.filter((p) => getConnectionStatus(p.id)).length;
+  if (isLoading) {
+    return (
+      <div className="p-6 text-center py-20">
+        <Loader2 className="w-8 h-8 mx-auto animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  const posts = approvedPosts ?? [];
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-display font-semibold flex items-center gap-3">
-            <Send className="w-6 h-6 text-primary" />
-            Publishing
-          </h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Publish approved content to your connected social media accounts
-          </p>
-        </div>
-        <Button variant="outline" onClick={() => refetch()} className="border-border/50 gap-2 text-sm">
-          <RefreshCw className="w-4 h-4" />
-          Refresh
-        </Button>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold">Publishing</h1>
+        <p className="text-muted-foreground mt-2">
+          Schedule posts directly on Facebook, Instagram, and TikTok using their native schedulers.
+        </p>
       </div>
 
-      {/* Platform Connection Status */}
-      <Card className="bg-card border-border/50">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold flex items-center justify-between">
-            <span>Your Platform Connections</span>
+      {posts.length === 0 ? (
+        <Card className="border-dashed">
+          <CardContent className="p-12 text-center">
+            <Send className="w-10 h-10 mx-auto mb-4 text-muted-foreground/50" />
+            <p className="text-muted-foreground">No approved posts to publish.</p>
             <Button
-              size="sm"
               variant="outline"
-              onClick={() => setLocation("/connections")}
-              className="border-border/50 text-xs h-7 px-2.5 gap-1.5"
+              className="mt-4"
+              onClick={() => setLocation("/approval-queue")}
             >
-              <PlugZap className="w-3 h-3" />
-              Manage Connections
+              Go to Approval Queue
             </Button>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {[
-              { id: "instagram", label: "Instagram", emoji: "📸" },
-              { id: "facebook", label: "Facebook", emoji: "📘" },
-              { id: "tiktok", label: "TikTok", emoji: "🎵" },
-            ].map((platform) => {
-              const conn = getConnectionStatus(platform.id);
-              return (
-                <div
-                  key={platform.id}
-                  className={`p-4 rounded-xl border transition-all ${
-                    conn
-                      ? "border-green-400/20 bg-green-400/5"
-                      : "border-border/40 bg-card/50"
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xl">{platform.emoji}</span>
-                      <span className="font-medium text-sm">{platform.label}</span>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-4">
+          {posts.map((post) => {
+            const niche = NICHES.find((n) => n.id === post.niche);
+            const selected = selectedPlatforms[post.id] ?? [];
+            const isPublished = publishedPosts?.some((p) => p.id === post.id);
+
+            return (
+              <Card key={post.id} className="overflow-hidden">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <CardTitle className="text-lg">{post.title}</CardTitle>
+                      <div className="flex gap-2 mt-2">
+                        {niche && (
+                          <Badge variant="outline" className="text-xs">
+                            {niche.label}
+                          </Badge>
+                        )}
+                        <Badge
+                          variant={isPublished ? "default" : "secondary"}
+                          className="text-xs"
+                        >
+                          {isPublished ? "Published" : "Ready"}
+                        </Badge>
+                      </div>
                     </div>
-                    {conn ? (
-                      <CheckCircle className="w-4 h-4 text-green-400" />
-                    ) : (
-                      <AlertCircle className="w-4 h-4 text-muted-foreground/40" />
+                  </div>
+                </CardHeader>
+
+                <CardContent className="space-y-4">
+                  {/* Content Preview */}
+                  <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                    <p className="text-sm font-medium">Caption</p>
+                    <p className="text-sm text-muted-foreground line-clamp-3">{post.caption}</p>
+
+                    {post.hashtags && (
+                      <>
+                        <p className="text-sm font-medium pt-2">Hashtags</p>
+                        <p className="text-sm text-muted-foreground">{post.hashtags}</p>
+                      </>
+                    )}
+
+                    {post.imageUrl && (
+                      <>
+                        <p className="text-sm font-medium pt-2">Image</p>
+                        <img
+                          src={post.imageUrl}
+                          alt="Post preview"
+                          className="w-full max-w-xs rounded-md"
+                        />
+                      </>
                     )}
                   </div>
-                  {conn ? (
-                    <p className="text-xs text-green-400/80">{conn.accountName}</p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground/60">Not connected</p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          {connectedCount === 0 && (
-            <div className="mt-3 p-3 rounded-lg bg-primary/5 border border-primary/20 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-primary shrink-0" />
-              <p className="text-xs text-muted-foreground">
-                No platforms connected yet.{" "}
-                <button onClick={() => setLocation("/connections")} className="text-primary underline">
-                  Connect your accounts
-                </button>{" "}
-                to start publishing.
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
-      {/* Ready to Publish */}
-      <div>
-        <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground mb-3">
-          Ready to Publish ({approvedPosts?.length ?? 0})
-        </h2>
-        {isLoading ? (
-          <div className="space-y-3">
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className="h-28 rounded-xl bg-card/50 border border-border/30 animate-pulse" />
-            ))}
-          </div>
-        ) : (approvedPosts?.length ?? 0) === 0 ? (
-          <Card className="bg-card border-border/50">
-            <CardContent className="py-12 text-center">
-              <Send className="w-8 h-8 mx-auto mb-3 text-muted-foreground/30" />
-              <p className="text-muted-foreground text-sm">No approved posts ready to publish</p>
-              <p className="text-xs text-muted-foreground/60 mt-1">Approve content in the Approval Queue first</p>
-              <Button size="sm" className="mt-4 bg-primary text-primary-foreground" onClick={() => setLocation("/approval")}>
-                Go to Approval Queue
-              </Button>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-4">
-            {approvedPosts?.map((post: any) => {
-              const niche = NICHES.find((n) => n.id === post.niche);
-              const isPublishing = publishingId === post.id;
-              const postPlatforms = selectedPlatforms[post.id] ?? [];
-              const results = publishResults[post.id] ?? [];
-
-              return (
-                <Card key={post.id} className="bg-card border-border/50 hover:border-primary/20 transition-all">
-                  <CardContent className="p-5">
-                    <div className="flex items-start gap-4">
-                      <span className="text-2xl shrink-0 mt-0.5">{(niche as any)?.emoji ?? "📝"}</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm">{post.title}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">{niche?.label} · {post.contentType}</p>
-                        {(post.caption || post.fullContent) && (
-                          <p className="text-xs text-muted-foreground/70 mt-2 line-clamp-2 leading-relaxed">
-                            {post.caption || post.fullContent}
-                          </p>
-                        )}
-
-                        {/* Platform selector */}
-                        <div className="flex flex-wrap gap-2 mt-3">
-                          {PLATFORMS.map((p) => {
-                            const isSelected = postPlatforms.includes(p.id);
-                            const conn = getConnectionStatus(p.id);
-                            return (
-                              <button
-                                key={p.id}
-                                onClick={() => togglePlatform(post.id, p.id)}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
-                                  isSelected
-                                    ? "border-primary/40 bg-primary/8 text-primary"
-                                    : "border-border/40 text-muted-foreground hover:border-border"
-                                } ${!conn ? "opacity-50" : ""}`}
-                                title={!conn ? `Connect ${p.label} first` : undefined}
-                              >
-                                {p.id === "facebook" ? "📘" : p.id === "instagram" ? "📸" : "🎵"}
-                                {p.label}
-                                {conn ? (
-                                  <CheckCircle className="w-2.5 h-2.5 text-green-400" />
-                                ) : (
-                                  <AlertCircle className="w-2.5 h-2.5 text-muted-foreground/40" />
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-
-                        {/* Publish results */}
-                        {results.length > 0 && (
-                          <div className="mt-3 space-y-1.5">
-                            {results.map((r) => (
-                              <div key={r.platform} className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg ${
-                                r.success ? "bg-green-400/10 text-green-400" : "bg-destructive/10 text-destructive"
-                              }`}>
-                                {r.success ? <CheckCircle className="w-3 h-3 shrink-0" /> : <XCircle className="w-3 h-3 shrink-0" />}
-                                <span className="capitalize font-medium">{r.platform}:</span>
-                                <span>{r.success ? "Published successfully" : r.errorMessage ?? "Failed"}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Publish button */}
-                      <div className="shrink-0 space-y-2">
-                        {postPlatforms.length > 0 ? (
-                          <>
-                            <Button
-                              size="sm"
-                              onClick={() => handlePublish(post.id, postPlatforms)}
-                              disabled={isPublishing}
-                              className="bg-primary text-primary-foreground gap-1.5 text-xs w-full"
-                            >
-                              {isPublishing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
-                              Publish Now ({postPlatforms.length})
-                            </Button>
-                            <button
-                              onClick={() => setScheduleMode((prev) => ({ ...prev, [post.id]: !prev[post.id] }))}
-                              className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 justify-center w-full"
-                            >
-                              <Clock className="w-3 h-3" />
-                              Schedule for later
-                            </button>
-                            {scheduleMode[post.id] && (
-                              <div className="flex items-center gap-1.5 pt-1 border-t border-border/30">
-                                <input
-                                  type="datetime-local"
-                                  value={scheduleTimes[post.id] ?? ""}
-                                  onChange={(e) => setScheduleTimes((prev) => ({ ...prev, [post.id]: e.target.value }))}
-                                  className="text-xs px-2 py-1 rounded bg-card border border-border/50 text-foreground flex-1 h-7"
-                                />
-                                <Button
-                                  size="sm"
-                                  onClick={() => {
-                                    if (!scheduleTimes[post.id]) {
-                                      toast.error("Please select a time");
-                                      return;
-                                    }
-                                    const scheduledDate = new Date(scheduleTimes[post.id]);
-                                    scheduleMutation.mutate({
-                                      postId: post.id,
-                                      platforms: postPlatforms as any,
-                                      scheduledAt: scheduledDate,
-                                    });
-                                  }}
-                                  disabled={scheduleMutation.isPending}
-                                  className="bg-primary/80 text-primary-foreground text-xs h-7 px-2"
-                                >
-                                  {scheduleMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Schedule"}
-                                </Button>
-                              </div>
-                            )}
-                          </>
-                        ) : (
-                          <p className="text-xs text-muted-foreground">Select platforms →</p>
-                        )}
-                      </div>
-
-                    </div>             </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Recently Published */}
-      {(publishedPosts?.length ?? 0) > 0 && (
-        <div>
-          <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground mb-3">
-            Recently Published
-          </h2>
-          <div className="space-y-2">
-            {publishedPosts?.slice(0, 5).map((post: any) => {
-              const niche = NICHES.find((n) => n.id === post.niche);
-              return (
-                <div key={post.id} className="flex items-center justify-between py-2.5 px-4 rounded-lg bg-card border border-border/30">
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg">{(niche as any)?.emoji ?? "📝"}</span>
-                    <div>
-                      <p className="text-sm font-medium">{post.title}</p>
-                      <p className="text-xs text-muted-foreground">{niche?.label}</p>
+                  {/* Platform Selection */}
+                  <div className="space-y-3">
+                    <p className="text-sm font-medium">Select platforms to schedule:</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {PLATFORMS.map((platform) => (
+                        <Button
+                          key={platform.id}
+                          variant={selected.includes(platform.id) ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => togglePlatform(post.id, platform.id)}
+                          className="text-xs"
+                        >
+                          {platform.label}
+                        </Button>
+                      ))}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Badge className="status-published text-[10px]">Published</Badge>
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(post.updatedAt).toLocaleDateString()}
-                    </span>
+
+                  {/* Action Buttons */}
+                  <div className="flex gap-2 pt-2">
+                    {selected.length > 0 && (
+                      <>
+                        {selected.includes("facebook") && post.caption && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              openPlatformScheduler(
+                                "facebook",
+                                post.caption || "",
+                                post.hashtags || ""
+                              )
+                            }
+                            className="gap-2"
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                            Facebook Scheduler
+                          </Button>
+                        )}
+                        {selected.includes("instagram") && post.caption && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              openPlatformScheduler(
+                                "instagram",
+                                post.caption || "",
+                                post.hashtags || ""
+                              )
+                            }
+                            className="gap-2"
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                            Instagram
+                          </Button>
+                        )}
+                        {selected.includes("tiktok") && post.caption && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              openPlatformScheduler("tiktok", post.caption || "", "")
+                            }
+                            className="gap-2"
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                            TikTok Upload
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          onClick={() => markAsPublished(post.id, selected)}
+                          disabled={publishMutation.isPending}
+                          className="gap-2 ml-auto"
+                        >
+                          {publishMutation.isPending ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <CheckCircle className="w-4 h-4" />
+                          )}
+                          Mark Published
+                        </Button>
+                      </>
+                    )}
                   </div>
-                </div>
-              );
-            })}
-          </div>
+
+                  {/* Instructions */}
+                  {selected.length > 0 && (
+                    <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-xs text-blue-900 dark:text-blue-100">
+                      <p className="font-medium mb-1">How it works:</p>
+                      <ol className="list-decimal list-inside space-y-1">
+                        <li>Click the platform button to open the scheduler</li>
+                        <li>Your caption is copied to clipboard — paste it into the platform</li>
+                        <li>Add your image/video and set the schedule time</li>
+                        <li>Click "Mark Published" to update the post status here</li>
+                      </ol>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>
