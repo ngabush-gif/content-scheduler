@@ -164,3 +164,13 @@
 - [x] Test Settings page loads and forms work
 - [x] Test credential save/delete functionality
 - [x] All tests passing (21 tests), zero TypeScript errors
+
+
+## Team Member Access Fix (CRITICAL)
+- [x] Remove Settings page (revert to Option B simple publishing)
+- [x] Fix content visibility - each user only sees their own posts (already implemented)
+- [x] Fix role/access issues - allow non-admin users to use the app (fixed user role assignment)
+- [x] Verify team members can login independently with their own email
+- [x] Test each user sees only their own content
+- [x] Verify Option B publishing still works (copy-to-clipboard)
+- [x] All tests passing (21 tests), zero TypeScript errors

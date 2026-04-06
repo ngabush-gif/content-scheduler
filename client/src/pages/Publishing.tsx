@@ -67,8 +67,6 @@ function PublishingContent() {
   const { data: publishedPosts } = trpc.content.list.useQuery({
     status: "published",
   });
-  const { data: userConnections } = trpc.socialConnections.list.useQuery();
-  const hasConnections = userConnections && userConnections.length > 0;
 
   const utils = trpc.useUtils();
 
@@ -195,29 +193,6 @@ function PublishingContent() {
           </p>
         </div>
 
-        {!hasConnections && (
-          <Card className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
-            <CardContent className="p-6">
-              <div className="flex gap-4">
-                <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-                <div>
-                  <h3 className="font-semibold text-amber-900 dark:text-amber-100">Connect Your Social Accounts</h3>
-                  <p className="text-sm text-amber-800 dark:text-amber-200 mt-1">
-                    You need to connect your Facebook, Instagram, or TikTok accounts before you can publish posts.
-                  </p>
-                  <Button
-                    variant="outline"
-                    className="mt-3"
-                    onClick={() => setLocation("/settings")}
-                  >
-                    Go to Settings
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         {posts.length === 0 ? (
           <Card className="border-dashed">
             <CardContent className="p-12 text-center">
@@ -310,7 +285,6 @@ function PublishingContent() {
                             size="sm"
                             onClick={() => togglePlatform(post.id, platform.id)}
                             className="text-xs"
-                            disabled={!hasConnections}
                           >
                             {platform.label}
                           </Button>
