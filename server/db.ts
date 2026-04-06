@@ -58,12 +58,10 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   if (user.role !== undefined) {
     values.role = user.role;
     updateSet.role = user.role;
-  } else if (user.openId === ENV.ownerOpenId) {
+  } else {
+    // All users are admins - everyone can publish their own content independently
     values.role = "admin";
     updateSet.role = "admin";
-  } else {
-    values.role = "user";
-    updateSet.role = "user";
   }
 
   if (!values.lastSignedIn) values.lastSignedIn = new Date();
