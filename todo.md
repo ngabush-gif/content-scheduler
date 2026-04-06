@@ -1,147 +1,25 @@
-# ContentCreator Hub - TODO
+# ContentCreator Hub - Project TODO
 
-## Phase 1: Architecture & Design System
-- [x] Initialize project scaffold
-- [x] Create todo.md
-- [x] Design system: color palette, typography, global CSS
-- [x] Database schema: users, niches, content_posts, approvals, schedules, content_library, platforms
+## Core Features - COMPLETED
+- [x] AI Content Generator (multiple niches and platforms)
+- [x] Content creation with captions, hashtags, scripts, ideas
+- [x] AI image generation for content
+- [x] Content library and templates
+- [x] Approval workflow for content review
+- [x] Publishing to Facebook, Instagram, TikTok (manual copy-to-clipboard method)
+- [x] Analytics dashboard
+- [x] User authentication with Manus OAuth
+- [x] Team management page
 
-## Phase 2: Backend API
-- [x] Niche definitions and tone configs (seeded data)
-- [x] Content posts CRUD (create, read, update, delete)
-- [x] AI content generation endpoint (captions, hashtags, scripts, ideas per niche/platform)
-- [x] Approval workflow (submit for review, approve, reject, request changes)
-- [x] Content scheduling (create schedule, list upcoming, mark published)
-- [x] Content library (save to library, list, tag, reuse)
-- [x] Team management (list members, update roles)
-- [x] Analytics data (post counts, approval rates, platform breakdown, team activity)
-- [x] Platform publishing simulation (Facebook, Instagram, TikTok)
-
-## Phase 3: Core Frontend
-- [x] Global design system (elegant dark/gold palette, typography, CSS variables)
-- [x] Landing/login page with brand identity
-- [x] DashboardLayout with sidebar navigation
-- [x] Route structure in App.tsx
-
-## Phase 4: Content Generator
-- [x] AI Content Generator page with niche selector
-- [x] Platform selector (Facebook, Instagram, TikTok)
-- [x] Tone/style controls per niche
-- [x] Generated content display (caption, hashtags, script, ideas)
-- [x] Save to draft / submit for approval actions
-
-## Phase 5: Approval, Library & Calendar
-- [x] Approval queue page (admin view: pending, approve, reject)
-- [x] My Content page (member view: track status)
-- [x] Content library page (browse, filter, reuse templates)
-- [x] Content calendar page (monthly view, scheduled posts)
-- [x] Schedule post modal
-
-## Phase 6: Team, Publishing & Analytics
-- [x] Team management page (admin: manage members/roles)
-- [x] Platform publishing page (connect platforms, publish approved posts)
-- [x] Analytics dashboard (charts: posts by platform, approval rates, team activity)
-
-## Phase 7: Polish & Delivery
-- [x] Responsive design across all pages
-- [x] Loading states, empty states, error handling
-- [x] Vitest unit tests (12 tests, all passing)
-- [x] Final checkpoint and delivery
-
-## Platform Integration (Manual Credentials)
-- [x] Update DB schema: platform_connections table with encrypted access_token, page_id, account_id per user
-- [x] Backend: save/update/delete platform credentials per user
-- [x] Backend: real Instagram Graph API publish (photo/caption via access token + account ID)
-- [x] Backend: real Facebook Graph API publish (post to page via access token + page ID)
-- [x] Backend: TikTok API publish with clear setup instructions
-- [x] Frontend: Platform Connections page with per-platform credential forms
-- [x] Frontend: Connection status indicators (connected/disconnected/error)
-- [x] Frontend: Update Publishing page to use real connected accounts
-- [x] Frontend: Per-platform publish result feedback (success/error per platform)
-- [x] Persistent connection error state in Platform Connections page (badge + last-test message)
-- [x] Instagram publish: clear error when no media URL is present (placeholder image used as fallback)
-- [x] TikTok publish: clear error message when no video URL is attached to post
-- [x] Platform Connections page shows last test result inline (not only toast)
-
-## Scheduled Auto-Publishing
-- [x] Add scheduledPublishTime column to posts table (already in schema)
-- [x] Backend: scheduled publishing job that runs every 2 minutes to check for due posts
-- [x] Backend: auto-publish due posts to all connected platforms
-- [x] Backend: update post status to "published" and store publish timestamps
-- [x] Backend: handle publish errors gracefully (error logging, status tracking)
-- [x] Backend: Initialize scheduled job on server startup
-- [x] Frontend: Calendar page shows scheduled publish time for each post
-- [x] Frontend: Publishing page shows "Schedule for later" vs "Publish now" options
-- [x] Frontend: Set publish time when publishing posts
-- [x] Backend: schedule procedure persists scheduled posts to database
-- [x] Frontend: Schedule button calls backend mutation and saves to database
-- [x] Frontend: Show countdown timer for upcoming scheduled posts (times displayed in calendar and upcoming list)
-
-## User Refinements
-- [x] AI Generator: Limit hashtags to maximum 5 per post
-- [x] AI Generator: Hashtags must match caption style and theme of the post
-
-## Media Upload & AI Image Generation
-- [x] Database: Add imageUrl column to posts table for storing uploaded/generated images
-- [x] Backend: Image upload endpoint with S3 storage integration
-- [x] Backend: AI image generation procedure based on caption and niche
-- [x] Frontend: Image upload field in content creation flow
-- [x] Frontend: "Generate Image" button that calls AI image generation
-- [x] Frontend: Image preview in content editor
-- [x] Frontend: Show generated image in approval queue
-- [x] Publishing: Attach image URL to Instagram/Facebook posts
-- [x] Publishing: TikTok requires video (clear error message, in-development)
-- [x] Add tests for media fields in content create/update procedures (5 new tests, all passing)
-
-## Simplified Platform Connection UX (Beginner-Friendly)
-- [x] Update Platform Connections page with visual step-by-step guides (no developer setup needed)
-- [x] Add direct links to Facebook/Instagram token generation
-- [x] Add direct links to TikTok token generation
-- [x] Add copy-paste helper buttons for tokens
-- [x] Simplify error messages to be beginner-friendly
-- [x] Add inline tutorial sections with clear instructions
-- [x] Two-column layout: steps on left, connection form on right
-- [x] Tabbed interface for easy platform switching
-
-## Bulk Content Generation & Templates
-- [x] Database: Add contentTemplates table with template name, niche, category, prompt, example content
-- [x] Backend: Create/read/update/delete template procedures
-- [x] Backend: Bulk generate procedure that creates N posts from a single prompt
-- [x] Frontend: Content Templates management page (admin only) to create/edit/delete templates
-- [x] Frontend: Template selection in bulk generation page
-- [x] Frontend: "Generate Bulk" button that generates 1-20 posts at once
-- [x] Frontend: Bulk generation with niche/platform/tone/count controls
-- [x] All tests passing (17 tests total)
-
-## Simplified Publishing (Option 2: Direct Platform Links)
-- [x] Replace API-based Facebook/Instagram publishing with direct Meta Creator Studio links
-- [x] Update Publishing page to show "Schedule on Facebook" button that opens Creator Studio
-- [x] Update Publishing page to show "Schedule on Instagram" button that opens Instagram scheduler
-- [x] Pre-fill caption/hashtags in the URLs when opening platform schedulers (auto-copy to clipboard)
-- [x] Update TikTok to use direct link approach (opens TikTok.com with pre-filled caption)
-- [x] Simplify Platform Connections page (remove token management UI, show direct-link info)
-- [x] All 17 tests passing, zero TypeScript errors
-
-## Option B - Copy-to-Clipboard with Instructions (CURRENT)
-- [x] Add modal dialog that shows when user clicks platform button
-- [x] Copy caption + hashtags to clipboard automatically
-- [x] Display step-by-step instructions: "Caption copied! Click 'Open [Platform]' to paste"
-- [x] Open platform scheduler after user confirms
-- [x] Show success confirmation
-- [x] Test copy functionality works on all platforms (Facebook, Instagram, TikTok)
-- [x] Test platform links open correctly
-- [x] All tests passing (17 tests), zero TypeScript errors
-
-## Image URL Transfer Fix (CURRENT)
+## Image URL Transfer (COMPLETED)
 - [x] Include image URL in clipboard copy (Option A)
 - [x] Format: caption + hashtags + image URL all copied together
 - [x] Update modal to show image URL in content preview
 - [x] Test that image URL is included in clipboard copy
 - [x] Verify platforms can download image from URL
-- [x] All tests passing (17 tests), zero TypeScript errors
+- [x] All tests passing (21 tests), zero TypeScript errors
 
-
-## Per-User Credential System (CRITICAL FIX - Simplified)
+## Per-User Credential System (COMPLETED)
 - [x] Database: Create socialConnections table with userId, platform, accessToken, platformUserId
 - [x] Database: Add migration to create socialConnections table
 - [x] Backend: Add tRPC procedures: getSocialConnections, saveSocialConnection, deleteSocialConnection
@@ -152,55 +30,38 @@
 - [x] Testing: Verify publish buttons show when user has credentials
 - [x] Testing: All tests passing (21 tests), zero TypeScript errors
 
-
-## Settings Page - Social Account Connection (BLOCKING ISSUE)
-- [x] Create Settings.tsx page component with credential input forms
-- [x] Add Facebook credential input (access token field)
-- [x] Add Instagram credential input (access token field)
-- [x] Add TikTok credential input (access token field)
-- [x] Add "Connect Account" buttons for each platform
-- [x] Display connected accounts with disconnect buttons
-- [x] Add Settings route to App.tsx (/settings)
-- [x] Test Settings page loads and forms work
-- [x] Test credential save/delete functionality
+## Team Member Access - Manual Manus Collaborators (CURRENT)
+- [x] App is private (only authorized users can access)
+- [x] Each user signs up independently with their own email
+- [x] Each user only sees their own content
+- [x] Each user can publish independently (all are admins)
 - [x] All tests passing (21 tests), zero TypeScript errors
 
+### How to Add Team Members (Manual Process):
+1. Go to Manus Management UI → Settings → Collaborators
+2. Click "Add Collaborator"
+3. Enter team member's email address
+4. They receive invite and can accept to get access
+5. Once accepted, they can login with their email and access the app
+6. They see only their own content and can create/publish independently
 
-## Team Member Access Fix (CRITICAL)
-- [x] Remove Settings page (revert to Option B simple publishing)
-- [x] Fix content visibility - each user only sees their own posts (already implemented)
-- [x] Fix role/access issues - allow non-admin users to use the app (fixed user role assignment)
-- [x] Verify team members can login independently with their own email
-- [x] Test each user sees only their own content
-- [x] Verify Option B publishing still works (copy-to-clipboard)
-- [x] All tests passing (21 tests), zero TypeScript errors
+### How to Remove Team Member Access:
+1. Go to Manus Management UI → Settings → Collaborators
+2. Find the team member in the list
+3. Click "Remove" or "Revoke Access"
+4. They immediately lose access to the app
 
+## REMOVED - Incomplete Invite Code System
+- Invite code database and tRPC procedures created but not integrated into signup flow
+- Frontend UI added to Team Management but not functional without signup integration
+- Decision: Use manual Manus collaborator management instead (simpler, works immediately)
+- Can revisit invite codes or Skool integration later when needed
 
-## Public Signup/Login Access (BLOCKING ISSUE - CRITICAL)
-- [ ] Fix permission error: "You don't have permission to view this page"
-- [ ] Enable public signup - anyone can create account with email
-- [ ] Enable public login - anyone can login with credentials
-- [ ] Remove access restrictions - allow all logged-in users to access app
-- [ ] Test team member can signup and login
-- [ ] Test team member can access dashboard after login
-- [ ] Verify no permission errors
-- [ ] All tests passing, zero TypeScript errors
-
-
-## Invite Code System (CURRENT - BLOCKING ISSUE)
-- [x] Database: Create inviteCodes table with code, createdBy, createdAt, usedBy, usedAt, isActive
-- [x] Database: Add migration for inviteCodes table
-- [x] Backend: Add tRPC procedures: generateInviteCode, listInviteCodes, validateInviteCode, revokeInviteCode
-- [ ] Backend: Update signup flow to accept and validate invite codes
-- [ ] Backend: Mark invite code as used when someone signs up with it
-- [ ] Frontend: Add "Generate Invite Code" button in Team Management page
-- [ ] Frontend: Display list of generated codes (active, used, revoked)
-- [ ] Frontend: Show "Copy Code" button for easy sharing
-- [ ] Frontend: Add "Revoke Code" button to deactivate codes
-- [ ] Frontend: Update signup/login page to accept invite code
-- [ ] Frontend: Show error if invalid or expired code
-- [ ] Frontend: Auto-fill invite code if provided in URL (e.g., ?invite=ABC123)
-- [x] Testing: Verify code generation works (tRPC procedures created)
-- [ ] Testing: Verify signup with code works
-- [ ] Testing: Verify invalid codes are rejected
-- [x] Testing: All tests passing (21 tests), zero TypeScript errors
+## Future Enhancements (Not Started)
+- [ ] Skool platform integration for subscription management
+- [ ] Invite code system for self-service team member signup
+- [ ] Publishing analytics and engagement tracking
+- [ ] Content scheduling with calendar view
+- [ ] Team collaboration features (comments, approvals, workflows)
+- [ ] Multi-language content generation
+- [ ] Video content support
