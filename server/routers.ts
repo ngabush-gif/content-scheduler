@@ -15,6 +15,7 @@ import {
   deleteContentPost,
   deleteScheduledPost,
   deleteTemplate,
+  deleteSocialConnection,
   disconnectPlatform,
   getAllContentPosts,
   getAllTemplates,
@@ -28,8 +29,11 @@ import {
   getPlatformConnections,
   getPublishLog,
   getScheduledPosts,
+  getSocialConnectionByPlatform,
+  getSocialConnections,
   getTemplate,
   getTemplatesByNiche,
+  saveSocialConnection,
   updateContentPost,
   updateScheduledPost,
   updateTemplate,
@@ -902,6 +906,41 @@ Generate post #${i + 1}. Return JSON with: {"caption": "...", "hashtags": "#tag1
         }
 
         return { success: true, posts, count: posts.length };
+      }),
+  }),
+
+  // ─── Social Connections (Per-User Credentials) ──────────────────────────────
+  socialConnections: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return getSocialConnections(ctx.user.id);
+    }),
+    save: protectedProcedure
+      .input(
+        z.object({
+          platform: z.enum(["facebook", "instagram", "tiktok"]),
+          accessToken: z.string().min(1, "Access token is required"),
+          platformUserId: z.string().min(1, "Platform user ID is required"),
+          platformUsername: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        await saveSocialConnection({
+          userId: ctx.user.id,
+          platform: input.platform,
+          accessToken: input.accessToken,
+          platformUserId: input.platformUserId,
+          platformUsername: input.platformUsername,
+          isActive: true,
+          connectedAt: new Date(),
+          updatedAt: new Date(),
+        });
+        return { success: true };
+      }),
+    delete: protectedProcedure
+      .input(z.object({ platform: z.enum(["facebook", "instagram", "tiktok"]) }))
+      .mutation(async ({ ctx, input }) => {
+        await deleteSocialConnection(ctx.user.id, input.platform);
+        return { success: true };
       }),
   }),
 

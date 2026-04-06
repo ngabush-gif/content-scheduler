@@ -139,3 +139,15 @@
 - [x] Test that image URL is included in clipboard copy
 - [x] Verify platforms can download image from URL
 - [x] All tests passing (17 tests), zero TypeScript errors
+
+
+## Per-User Credential System (CRITICAL FIX - Simplified)
+- [x] Database: Create socialConnections table with userId, platform, accessToken, platformUserId
+- [x] Database: Add migration to create socialConnections table
+- [x] Backend: Add tRPC procedures: getSocialConnections, saveSocialConnection, deleteSocialConnection
+- [x] Frontend: Update Publishing page to check if user has credentials connected
+- [x] Frontend: Show "Connect your accounts in Settings" message if no credentials found
+- [x] Frontend: Only show publish buttons if user has at least one platform connected
+- [x] Testing: Verify message shows when user has no credentials
+- [x] Testing: Verify publish buttons show when user has credentials
+- [x] Testing: All tests passing (21 tests), zero TypeScript errors

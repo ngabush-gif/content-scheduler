@@ -118,6 +118,8 @@ export const platformConnections = mysqlTable("platform_connections", {
   accountName: varchar("accountName", { length: 255 }),
   accountId: varchar("accountId", { length: 255 }),
   accessToken: text("accessToken"),
+  refreshToken: text("refreshToken"),
+  expiresAt: timestamp("expiresAt"),
   isActive: boolean("isActive").default(true).notNull(),
   connectedAt: timestamp("connectedAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -166,3 +168,23 @@ export const contentTemplates = mysqlTable("content_templates", {
 
 export type ContentTemplate = typeof contentTemplates.$inferSelect;
 export type InsertContentTemplate = typeof contentTemplates.$inferInsert;
+
+// ─── Social Connections (User OAuth Tokens) ────────────────────────────────────
+export const socialConnections = mysqlTable("social_connections", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  platform: mysqlEnum("platform", ["facebook", "instagram", "tiktok"]).notNull(),
+  platformUserId: varchar("platformUserId", { length: 255 }).notNull(),
+  platformUsername: varchar("platformUsername", { length: 255 }),
+  accessToken: text("accessToken").notNull(),
+  refreshToken: text("refreshToken"),
+  expiresAt: timestamp("expiresAt"),
+  scope: text("scope"),
+  isActive: boolean("isActive").default(true).notNull(),
+  lastVerifiedAt: timestamp("lastVerifiedAt"),
+  connectedAt: timestamp("connectedAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type SocialConnection = typeof socialConnections.$inferSelect;
+export type InsertSocialConnection = typeof socialConnections.$inferInsert;

@@ -12,6 +12,8 @@ import {
   platformConnections,
   publishLog,
   scheduledPosts,
+  socialConnections,
+  InsertSocialConnection,
   users,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
@@ -370,4 +372,61 @@ export async function getTemplate(id: number) {
   if (!db) return undefined;
   const result = await db.select().from(contentTemplates).where(eq(contentTemplates.id, id)).limit(1);
   return result[0];
+}
+
+
+// ─── Social Connections (Per-User Credentials) ─────────────────────────────────
+
+export async function getSocialConnections(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(socialConnections).where(eq(socialConnections.userId, userId));
+}
+
+export async function getSocialConnectionByPlatform(userId: number, platform: "facebook" | "instagram" | "tiktok") {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db
+    .select()
+    .from(socialConnections)
+    .where(and(eq(socialConnections.userId, userId), eq(socialConnections.platform, platform), eq(socialConnections.isActive, true)))
+    .limit(1);
+  return result[0];
+}
+
+export async function saveSocialConnection(data: InsertSocialConnection) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  
+  // Check if connection already exists
+  const existing = await db
+    .select()
+    .from(socialConnections)
+    .where(and(eq(socialConnections.userId, data.userId), eq(socialConnections.platform, data.platform)))
+    .limit(1);
+
+  if (existing.length > 0) {
+    // Update existing connection
+    await db
+      .update(socialConnections)
+      .set({
+        accessToken: data.accessToken,
+        platformUserId: data.platformUserId,
+        platformUsername: data.platformUsername,
+        isActive: true,
+        updatedAt: new Date(),
+      })
+      .where(eq(socialConnections.id, existing[0].id));
+  } else {
+    // Insert new connection
+    await db.insert(socialConnections).values(data);
+  }
+}
+
+export async function deleteSocialConnection(userId: number, platform: "facebook" | "instagram" | "tiktok") {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db
+    .delete(socialConnections)
+    .where(and(eq(socialConnections.userId, userId), eq(socialConnections.platform, platform)));
 }
