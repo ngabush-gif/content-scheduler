@@ -15,6 +15,7 @@ import TeamManagement from "./pages/TeamManagement";
 import Publishing from "./pages/Publishing";
 import Analytics from "./pages/Analytics";
 import PlatformConnections from "./pages/PlatformConnections";
+import Settings from "./pages/Settings";
 
 function Router() {
   return (
@@ -30,6 +31,7 @@ function Router() {
       <Route path="/publish" component={Publishing} />
       <Route path="/analytics" component={Analytics} />
       <Route path="/connections" component={PlatformConnections} />
+      <Route path="/settings" component={Settings} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

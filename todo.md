@@ -151,3 +151,16 @@
 - [x] Testing: Verify message shows when user has no credentials
 - [x] Testing: Verify publish buttons show when user has credentials
 - [x] Testing: All tests passing (21 tests), zero TypeScript errors
+
+
+## Settings Page - Social Account Connection (BLOCKING ISSUE)
+- [x] Create Settings.tsx page component with credential input forms
+- [x] Add Facebook credential input (access token field)
+- [x] Add Instagram credential input (access token field)
+- [x] Add TikTok credential input (access token field)
+- [x] Add "Connect Account" buttons for each platform
+- [x] Display connected accounts with disconnect buttons
+- [x] Add Settings route to App.tsx (/settings)
+- [x] Test Settings page loads and forms work
+- [x] Test credential save/delete functionality
+- [x] All tests passing (21 tests), zero TypeScript errors
