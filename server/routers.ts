@@ -39,6 +39,11 @@ import {
   updateTemplate,
   updateUserRole,
   upsertPlatformConnection,
+  generateInviteCode,
+  listInviteCodes,
+  revokeInviteCode,
+  validateInviteCode,
+  markInviteCodeAsUsed,
 } from "./db";
 import { publishToFacebook, publishToInstagram, publishToTikTok } from "./platformPublisher";
 import { generateAIImage, uploadMediaFile, validateUploadedFile } from "./imageHandler";
@@ -73,6 +78,21 @@ export const appRouter = router({
       .input(z.object({ userId: z.number(), role: z.enum(["user", "admin"]) }))
       .mutation(async ({ input }) => {
         await updateUserRole(input.userId, input.role);
+        return { success: true };
+      }),
+    generateInviteCode: adminProcedure
+      .mutation(async ({ ctx }) => {
+        const code = await generateInviteCode(ctx.user.id);
+        return { code, success: true };
+      }),
+    listInviteCodes: adminProcedure
+      .query(async ({ ctx }) => {
+        return listInviteCodes(ctx.user.id);
+      }),
+    revokeInviteCode: adminProcedure
+      .input(z.object({ code: z.string() }))
+      .mutation(async ({ input }) => {
+        await revokeInviteCode(input.code);
         return { success: true };
       }),
   }),

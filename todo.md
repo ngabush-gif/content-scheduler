@@ -174,3 +174,33 @@
 - [x] Test each user sees only their own content
 - [x] Verify Option B publishing still works (copy-to-clipboard)
 - [x] All tests passing (21 tests), zero TypeScript errors
+
+
+## Public Signup/Login Access (BLOCKING ISSUE - CRITICAL)
+- [ ] Fix permission error: "You don't have permission to view this page"
+- [ ] Enable public signup - anyone can create account with email
+- [ ] Enable public login - anyone can login with credentials
+- [ ] Remove access restrictions - allow all logged-in users to access app
+- [ ] Test team member can signup and login
+- [ ] Test team member can access dashboard after login
+- [ ] Verify no permission errors
+- [ ] All tests passing, zero TypeScript errors
+
+
+## Invite Code System (CURRENT - BLOCKING ISSUE)
+- [x] Database: Create inviteCodes table with code, createdBy, createdAt, usedBy, usedAt, isActive
+- [x] Database: Add migration for inviteCodes table
+- [x] Backend: Add tRPC procedures: generateInviteCode, listInviteCodes, validateInviteCode, revokeInviteCode
+- [ ] Backend: Update signup flow to accept and validate invite codes
+- [ ] Backend: Mark invite code as used when someone signs up with it
+- [ ] Frontend: Add "Generate Invite Code" button in Team Management page
+- [ ] Frontend: Display list of generated codes (active, used, revoked)
+- [ ] Frontend: Show "Copy Code" button for easy sharing
+- [ ] Frontend: Add "Revoke Code" button to deactivate codes
+- [ ] Frontend: Update signup/login page to accept invite code
+- [ ] Frontend: Show error if invalid or expired code
+- [ ] Frontend: Auto-fill invite code if provided in URL (e.g., ?invite=ABC123)
+- [x] Testing: Verify code generation works (tRPC procedures created)
+- [ ] Testing: Verify signup with code works
+- [ ] Testing: Verify invalid codes are rejected
+- [x] Testing: All tests passing (21 tests), zero TypeScript errors

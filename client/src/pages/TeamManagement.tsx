@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Crown, Shield, Users, UserCheck, XCircle } from "lucide-react";
+import { Crown, Shield, Users, UserCheck, XCircle, Copy, Trash2 } from "lucide-react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 
@@ -29,6 +29,22 @@ function TeamContent() {
     onSuccess: () => {
       utils.team.list.invalidate();
       toast.success("Role updated");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const { data: inviteCodes, isLoading: codesLoading } = trpc.team.listInviteCodes.useQuery();
+  const generateCodeMutation = trpc.team.generateInviteCode.useMutation({
+    onSuccess: () => {
+      utils.team.listInviteCodes.invalidate();
+      toast.success("Invite code generated!");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const revokeCodeMutation = trpc.team.revokeInviteCode.useMutation({
+    onSuccess: () => {
+      utils.team.listInviteCodes.invalidate();
+      toast.success("Code revoked");
     },
     onError: (e) => toast.error(e.message),
   });
@@ -132,6 +148,65 @@ function TeamContent() {
                   onRoleChange={(role) => updateRoleMutation.mutate({ userId: member.id, role })}
                   isUpdating={updateRoleMutation.isPending}
                 />
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Invite Codes */}
+      <Card className="bg-card border-border/50">
+        <CardHeader className="pb-3 flex flex-row items-center justify-between">
+          <CardTitle className="text-sm font-semibold">Invite Team Members</CardTitle>
+          <Button
+            size="sm"
+            onClick={() => generateCodeMutation.mutate()}
+            disabled={generateCodeMutation.isPending}
+            className="text-xs h-8"
+          >
+            Generate Code
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {codesLoading ? (
+            <p className="text-xs text-muted-foreground">Loading codes...</p>
+          ) : (inviteCodes ?? []).length === 0 ? (
+            <p className="text-xs text-muted-foreground">No invite codes yet. Generate one to invite team members.</p>
+          ) : (
+            <div className="space-y-2">
+              {(inviteCodes ?? []).map((code: any) => (
+                <div key={code.id} className="flex items-center justify-between p-3 bg-background/50 rounded-lg border border-border/30">
+                  <div className="flex-1">
+                    <div className="font-mono text-sm font-semibold">{code.code}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {code.usedBy ? `Used by ${code.usedAt ? new Date(code.usedAt).toLocaleDateString() : 'unknown'}` : 'Not used yet'}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        navigator.clipboard.writeText(code.code);
+                        toast.success("Code copied!");
+                      }}
+                      className="h-7 w-7 p-0"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </Button>
+                    {!code.usedBy && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => revokeCodeMutation.mutate({ code: code.code })}
+                        disabled={revokeCodeMutation.isPending}
+                        className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
               ))}
             </div>
           )}

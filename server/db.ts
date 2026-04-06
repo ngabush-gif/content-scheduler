@@ -14,6 +14,8 @@ import {
   scheduledPosts,
   socialConnections,
   InsertSocialConnection,
+  inviteCodes,
+  InsertInviteCode,
   users,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
@@ -430,4 +432,75 @@ export async function deleteSocialConnection(userId: number, platform: "facebook
   await db
     .delete(socialConnections)
     .where(and(eq(socialConnections.userId, userId), eq(socialConnections.platform, platform)));
+}
+
+
+// ─── Invite Codes ─────────────────────────────────────────────────────────────
+
+export async function generateInviteCode(createdBy: number): Promise<string> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  
+  // Generate a random 8-character code
+  const code = Math.random().toString(36).substring(2, 10).toUpperCase();
+  
+  await db.insert(inviteCodes).values({
+    code,
+    createdBy,
+    isActive: true,
+  });
+  
+  return code;
+}
+
+export async function listInviteCodes(createdBy: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  
+  return db
+    .select()
+    .from(inviteCodes)
+    .where(eq(inviteCodes.createdBy, createdBy))
+    .orderBy(desc(inviteCodes.createdAt));
+}
+
+export async function validateInviteCode(code: string) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  
+  const result = await db
+    .select()
+    .from(inviteCodes)
+    .where(
+      and(
+        eq(inviteCodes.code, code),
+        eq(inviteCodes.isActive, true)
+      )
+    )
+    .limit(1);
+  
+  return result[0] || null;
+}
+
+export async function markInviteCodeAsUsed(code: string, usedBy: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  
+  await db
+    .update(inviteCodes)
+    .set({
+      usedBy,
+      usedAt: new Date(),
+    })
+    .where(eq(inviteCodes.code, code));
+}
+
+export async function revokeInviteCode(code: string) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  
+  await db
+    .update(inviteCodes)
+    .set({ isActive: false })
+    .where(eq(inviteCodes.code, code));
 }

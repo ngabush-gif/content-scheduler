@@ -188,3 +188,18 @@ export const socialConnections = mysqlTable("social_connections", {
 
 export type SocialConnection = typeof socialConnections.$inferSelect;
 export type InsertSocialConnection = typeof socialConnections.$inferInsert;
+
+// ─── Invite Codes (Team Access) ────────────────────────────────────────────────
+export const inviteCodes = mysqlTable("invite_codes", {
+  id: int("id").autoincrement().primaryKey(),
+  code: varchar("code", { length: 32 }).notNull().unique(),
+  createdBy: int("createdBy").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  expiresAt: timestamp("expiresAt"),
+  usedBy: int("usedBy"),
+  usedAt: timestamp("usedAt"),
+  isActive: boolean("isActive").default(true).notNull(),
+});
+
+export type InviteCode = typeof inviteCodes.$inferSelect;
+export type InsertInviteCode = typeof inviteCodes.$inferInsert;
