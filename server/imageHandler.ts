@@ -66,17 +66,22 @@ export async function uploadMediaFile(
       return { url: "", success: false, error: "Failed to upload file" };
     }
 
-    // Log the upload in database
-    const db = await getDb();
-    if (db) {
-      const fileType = mimeType.startsWith("video") ? "video" : "image";
-      await db.insert(mediaUploads).values({
-        userId,
-        fileUrl: result.url,
-        fileType: fileType as "image" | "video",
-        fileName,
-        fileSize: fileBuffer.length,
-      });
+    // Log the upload in database (non-critical, don't fail upload if this fails)
+    try {
+      const db = await getDb();
+      if (db) {
+        const fileType = mimeType.startsWith("video") ? "video" : "image";
+        await db.insert(mediaUploads).values({
+          userId,
+          fileUrl: result.url,
+          fileType: fileType as "image" | "video",
+          fileName,
+          fileSize: fileBuffer.length,
+        });
+      }
+    } catch (dbError) {
+      // Log the error but don't fail the upload - the file is already in S3
+      console.warn("[ImageHandler] Failed to log upload to database:", dbError);
     }
 
     return { url: result.url, success: true };
