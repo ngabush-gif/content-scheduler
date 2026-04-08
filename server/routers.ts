@@ -362,9 +362,9 @@ Return JSON with:
         } else if (input.contentType === "hashtags") {
           userPrompt = `${topicContext}
 
-Generate EXACTLY 5 hashtags for ${platform?.label || "social media"} targeting ${niche?.label || "this audience"}.
+Generate 4-5 hashtags for ${platform?.label || "social media"} targeting ${niche?.label || "this audience"}.
 
-IMPORTANT: These 5 hashtags must:
+IMPORTANT: These hashtags must:
 1. Match the caption style and theme of the post
 2. Reflect the tone and audience of the ${niche?.label || "audience"}
 3. Be highly relevant and authentic (not generic)
@@ -372,8 +372,8 @@ IMPORTANT: These 5 hashtags must:
 5. Feel natural with the content, not forced
 
 Return JSON with:
-- hashtags: array of exactly 5 hashtags that match the caption tone and theme
-- fullSet: all 5 hashtags as a single string ready to post`;
+- hashtags: array of 4-5 hashtags that match the caption tone and theme
+- fullSet: all hashtags as a single string ready to post`;
 
           responseSchema = {
             type: "json_schema",
@@ -383,7 +383,7 @@ Return JSON with:
               schema: {
                 type: "object",
                 properties: {
-                  hashtags: { type: "array", items: { type: "string" }, minItems: 5, maxItems: 5 },
+                  hashtags: { type: "array", items: { type: "string" }, minItems: 4, maxItems: 5 },
                   fullSet: { type: "string" },
                 },
                 required: ["hashtags", "fullSet"],

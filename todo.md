@@ -97,3 +97,10 @@
 - [x] Test image upload works end-to-end
 - [x] Verify images save properly to database
 - [x] All tests passing (21 tests), zero TypeScript errors
+
+
+## Hashtag Limit Fix (COMPLETED)
+- [x] Update AI generation prompt to limit hashtags to 4-5 maximum (changed from exactly 5)
+- [x] Updated JSON schema to allow minItems: 4, maxItems: 5
+- [x] Test hashtag generation returns 4-5 hashtags only
+- [x] All tests passing (21 tests), zero TypeScript errors
