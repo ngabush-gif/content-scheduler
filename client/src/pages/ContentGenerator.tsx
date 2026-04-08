@@ -42,6 +42,7 @@ function GeneratorContent() {
   const [selectedContentType, setSelectedContentType] = useState<ContentTypeId>("full_post");
   const [topic, setTopic] = useState("");
   const [customTone, setCustomTone] = useState("");
+  const [selectedContentStyle, setSelectedContentStyle] = useState<"motivational" | "engagement" | "personal_story" | "curiosity" | "opportunity" | "tips_values" | null>(null);
   const [imageUrl, setImageUrl] = useState("");
   const [isAiGenerated, setIsAiGenerated] = useState(false);
   const [generatedContent, setGeneratedContent] = useState<any>(null);
@@ -91,6 +92,7 @@ function GeneratorContent() {
       contentType: selectedContentType,
       topic: topic || undefined,
       customTone: customTone || undefined,
+      contentStyle: selectedContentStyle as any,
     });
   };
 
@@ -240,6 +242,30 @@ function GeneratorContent() {
                     </button>
                   );
                 })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Content Style */}
+          <Card className="bg-card border-border/50">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold">3.5 Content Style (Optional)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-2">
+                {["motivational", "engagement", "personal_story", "curiosity", "opportunity", "tips_values"].map((style) => (
+                  <button
+                    key={style}
+                    onClick={() => setSelectedContentStyle(selectedContentStyle === style ? null : (style as any))}
+                    className={`p-2.5 rounded-lg border text-xs font-medium transition-all text-center ${
+                      selectedContentStyle === style
+                        ? "border-primary/40 bg-primary/8 text-primary"
+                        : "border-border/40 hover:border-border hover:bg-accent/30 text-muted-foreground"
+                    }`}
+                  >
+                    {style.replace(/_/g, " ")}
+                  </button>
+                ))}
               </div>
             </CardContent>
           </Card>

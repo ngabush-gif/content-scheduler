@@ -49,6 +49,7 @@ export const contentPosts = mysqlTable("content_posts", {
   fullContent: text("fullContent"),
   imageUrl: text("imageUrl"), // URL to uploaded or AI-generated image
   tone: varchar("tone", { length: 100 }),
+  contentStyle: mysqlEnum("contentStyle", ["motivational", "engagement", "personal_story", "curiosity", "opportunity", "tips_values"]),
   status: mysqlEnum("status", ["draft", "pending_review", "approved", "rejected", "published"]).default("draft").notNull(),
   rejectionNote: text("rejectionNote"),
   approvedById: int("approvedById"),

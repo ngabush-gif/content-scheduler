@@ -57,6 +57,19 @@
 - Decision: Use manual Manus collaborator management instead (simpler, works immediately)
 - Can revisit invite codes or Skool integration later when needed
 
+## Content Style Options (COMPLETED)
+- [x] Database: Add contentStyle column to content table (enum: motivational, engagement, personal_story, curiosity, opportunity, tips_values)
+- [x] Frontend: Add content style selector to AI Generator (6 style buttons)
+- [x] Backend: Update AI generation prompt to include content style context
+- [x] Testing: Verify content style selector works in UI
+- [x] All tests passing (21 tests), zero TypeScript errors
+
+## Post History & Deduplication (FUTURE ENHANCEMENT)
+- [ ] Database: Create postHistory table for tracking user's previous posts
+- [ ] Backend: Implement deduplication logic to prevent similar content
+- [ ] Backend: Pass post history to LLM for smarter generation
+- [ ] Can be added later when needed
+
 ## Future Enhancements (Not Started - Can Be Added Later)
 - [ ] Skool platform integration for subscription management
 - [ ] Invite code system for self-service team member signup

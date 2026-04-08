@@ -294,6 +294,7 @@ export const appRouter = router({
           contentType: z.enum(["caption", "script", "hashtags", "ideas", "full_post"]),
           topic: z.string().optional(),
           customTone: z.string().optional(),
+          contentStyle: z.enum(["motivational", "engagement", "personal_story", "curiosity", "opportunity", "tips_values"]).optional(),
         })
       )
       .mutation(async ({ input }) => {
@@ -310,11 +311,13 @@ export const appRouter = router({
 
         const topicContext = input.topic ? `Topic/focus: ${input.topic}` : "Choose a relevant topic for this audience";
         const toneOverride = input.customTone ? `Additional tone instruction: ${input.customTone}` : "";
+        const styleContext = input.contentStyle ? `Content Style: ${input.contentStyle.replace(/_/g, " ")}` : "";
 
         let systemPrompt = `You are an expert social media content creator specializing in online business, digital marketing, and personal development content. You create authentic, engaging content that resonates deeply with specific audiences.
 
 ${nicheContext}
 ${platformContext}
+${styleContext}
 ${toneOverride}
 
 Always create content that:

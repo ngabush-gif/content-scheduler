@@ -1,0 +1,1 @@
+ALTER TABLE `content_posts` ADD `contentStyle` enum('motivational','engagement','personal_story','curiosity','opportunity','tips_values');
