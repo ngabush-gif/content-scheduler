@@ -71,10 +71,21 @@ export async function publishToInstagram(
 
     const containerData = await containerRes.json() as any;
     if (!containerRes.ok || containerData.error) {
-      return {
+      const errorResult: PublishResult = {
         success: false,
         errorMessage: containerData.error?.message ?? `Instagram container error (${containerRes.status})`,
       };
+
+      // Attach error code for worker to classify
+      if (containerRes.status === 401 || containerData.error?.code === 190) {
+        errorResult.errorMessage = "TOKEN_EXPIRED: " + errorResult.errorMessage;
+      } else if (containerRes.status === 403 || containerData.error?.code === 200) {
+        errorResult.errorMessage = "INSUFFICIENT_PERMISSIONS: " + errorResult.errorMessage;
+      } else if (containerRes.status === 429) {
+        errorResult.errorMessage = "RATE_LIMITED: " + errorResult.errorMessage;
+      }
+
+      return errorResult;
     }
 
     const containerId = containerData.id;
@@ -94,10 +105,21 @@ export async function publishToInstagram(
 
     const publishData = await publishRes.json() as any;
     if (!publishRes.ok || publishData.error) {
-      return {
+      const errorResult: PublishResult = {
         success: false,
         errorMessage: publishData.error?.message ?? `Instagram publish error (${publishRes.status})`,
       };
+
+      // Attach error code for worker to classify
+      if (publishRes.status === 401 || publishData.error?.code === 190) {
+        errorResult.errorMessage = "TOKEN_EXPIRED: " + errorResult.errorMessage;
+      } else if (publishRes.status === 403 || publishData.error?.code === 200) {
+        errorResult.errorMessage = "INSUFFICIENT_PERMISSIONS: " + errorResult.errorMessage;
+      } else if (publishRes.status === 429) {
+        errorResult.errorMessage = "RATE_LIMITED: " + errorResult.errorMessage;
+      }
+
+      return errorResult;
     }
 
     return { success: true, platformPostId: publishData.id };
@@ -111,6 +133,11 @@ export async function publishToInstagram(
  * Publish to a Facebook Page via the Graph API.
  * Requires: access_token (Page Access Token with pages_manage_posts)
  *           page_id     (Facebook Page ID)
+ * 
+ * Supports:
+ * - Text-only posts
+ * - Text + single image (via link parameter)
+ * - Proper error classification for auth failures and rate limits
  */
 export async function publishToFacebook(
   post: PostContent,
@@ -120,30 +147,58 @@ export async function publishToFacebook(
     const text = buildPostText(post);
     const { accessToken, pageId } = credentials;
 
+    const body: any = {
+      message: text,
+      access_token: accessToken,
+    };
+
+    // Add image if available (Facebook supports via 'link' parameter)
+    if (post.imageUrl) {
+      body.link = post.imageUrl;
+    }
+
     const res = await fetch(
       `https://graph.facebook.com/v21.0/${pageId}/feed`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: text,
-          access_token: accessToken,
-        }),
+        body: JSON.stringify(body),
       }
     );
 
     const data = await res.json() as any;
     if (!res.ok || data.error) {
-      return {
+      const errorResult: PublishResult = {
         success: false,
         errorMessage: data.error?.message ?? `Facebook error (${res.status})`,
       };
+
+      // Attach error code for worker to classify
+      if (res.status === 401 || data.error?.code === 190) {
+        errorResult.errorMessage = "TOKEN_EXPIRED: " + errorResult.errorMessage;
+      } else if (res.status === 403 || data.error?.code === 200) {
+        errorResult.errorMessage = "INSUFFICIENT_PERMISSIONS: " + errorResult.errorMessage;
+      } else if (res.status === 429) {
+        errorResult.errorMessage = "RATE_LIMITED: " + errorResult.errorMessage;
+      }
+
+      return errorResult;
     }
 
     return { success: true, platformPostId: data.id };
   } catch (err: any) {
     return { success: false, errorMessage: err?.message ?? "Unknown Facebook error" };
   }
+}
+
+/**
+ * Alias for publishToFacebook for backward compatibility
+ */
+export async function publishToFacebookPage(
+  post: PostContent,
+  credentials: { accessToken: string; pageId: string }
+): Promise<PublishResult> {
+  return publishToFacebook(post, credentials);
 }
 
 // ─── TikTok ───────────────────────────────────────────────────────────────────

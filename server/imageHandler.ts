@@ -1,7 +1,7 @@
 import { generateImage } from "./_core/imageGeneration";
 import { storagePut } from "./storage";
 import { getDb } from "./db";
-import { mediaUploads } from "../drizzle/schema";
+// import { mediaUploads } from "../drizzle/schema"; // TODO: Implement media tracking table
 
 /**
  * Generate an AI image based on caption and niche context
@@ -67,6 +67,8 @@ export async function uploadMediaFile(
     }
 
     // Log the upload in database (non-critical, don't fail upload if this fails)
+    // TODO: Implement media tracking table
+    /*
     try {
       const db = await getDb();
       if (db) {
@@ -83,6 +85,7 @@ export async function uploadMediaFile(
       // Log the error but don't fail the upload - the file is already in S3
       console.warn("[ImageHandler] Failed to log upload to database:", dbError);
     }
+    */
 
     return { url: result.url, success: true };
   } catch (error) {

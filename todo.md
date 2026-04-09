@@ -104,3 +104,81 @@
 - [x] Updated JSON schema to allow minItems: 4, maxItems: 5
 - [x] Test hashtag generation returns 4-5 hashtags only
 - [x] All tests passing (21 tests), zero TypeScript errors
+
+
+---
+
+## Direct Publishing MVP (IN PROGRESS)
+
+### Phase 1: Schema Updates
+- [x] Update `scheduledPosts` table with new fields (connectionId, pageId, provider, retryCount, nextRetryAt, lastError, remotePostId, publishedAt)
+- [x] Update status enum to include "publishing", "reconnect_required"
+- [x] Generate Drizzle migration
+- [ ] Apply migration to database (use webdev_execute_sql with drizzle/0007_migration.sql)
+- [x] Update TypeScript types in schema.ts
+- [ ] Create database helper functions in db.ts
+
+### Phase 2: Publishing Worker
+- [ ] Create `server/jobs/publishingWorker.ts` with atomic job claiming
+- [ ] Implement `SELECT ... FOR UPDATE` locking for atomic claiming
+- [ ] Add retry logic with exponential backoff
+- [ ] Create error handling utilities (error codes, retry decisions)
+- [ ] Implement provider dispatch (Facebook, Instagram, TikTok)
+- [ ] Add logging for job execution
+
+### Phase 3: Provider Publishing Functions
+- [ ] Update `publishToFacebookPage()` to support images
+- [ ] Implement `publishToInstagram()`
+- [ ] Implement `publishToTikTok()`
+- [ ] Add error handling for each provider
+- [ ] Test with real API credentials
+
+### Phase 4: tRPC Endpoints
+- [ ] Create `schedule.create` endpoint (queue post for later)
+- [ ] Create `schedule.publish` endpoint (immediate publish)
+- [ ] Create `schedule.retry` endpoint (manual retry for failed jobs)
+- [ ] Create `schedule.cancel` endpoint (cancel scheduled post)
+- [ ] Create `schedule.list` endpoint (get scheduled posts with status)
+- [ ] Add proper error handling and validation
+
+### Phase 5: Frontend Updates
+- [ ] Remove `window.open()` from Publishing.tsx
+- [ ] Remove copy-to-clipboard modal
+- [ ] Update ContentCalendar.tsx to show job statuses
+- [ ] Add status badges (scheduled, publishing, published, failed, reconnect_required)
+- [ ] Add retry countdown display
+- [ ] Add "Reconnect Required" message with link to reconnect
+- [ ] Add manual retry button for failed jobs
+- [ ] Update Publishing page to use new tRPC endpoints
+
+### Phase 6: Database Helpers
+- [ ] Create `getScheduledPostsReadyToPublish()` helper
+- [ ] Create `claimScheduledPost()` helper with atomic locking
+- [ ] Create `updateScheduledPostStatus()` helper
+- [ ] Create `createPublishingJob()` helper
+- [ ] Create `getConnectionWithCredentials()` helper
+- [ ] Create `getMultiplePages()` helper for Facebook
+
+### Phase 7: Testing
+- [ ] Write unit tests for atomic job claiming
+- [ ] Write unit tests for retry logic
+- [ ] Write unit tests for error handling
+- [ ] Write integration tests for Facebook publishing
+- [ ] Write integration tests for Instagram publishing
+- [ ] Write integration tests for TikTok publishing
+- [ ] Manual end-to-end testing with real accounts
+
+### Phase 8: Documentation & Cleanup
+- [ ] Update SCHEDULER_AUDIT.md with implementation details
+- [ ] Document error codes and recovery strategies
+- [ ] Document retry backoff strategy
+- [ ] Remove old Publishing page code
+- [ ] Add comments to publishingWorker.ts
+- [ ] Create checkpoint
+
+### Phase 9: Deployment
+- [ ] Test in staging environment
+- [ ] Verify worker process starts correctly
+- [ ] Monitor job execution logs
+- [ ] Test error scenarios (expired token, rate limit, etc.)
+- [ ] Deploy to production

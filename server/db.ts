@@ -4,21 +4,26 @@ import {
   approvalHistory,
   contentPosts,
   contentTemplates,
-  InsertApprovalHistory,
-  InsertContentPost,
-  InsertContentTemplate,
-  InsertScheduledPost,
-  InsertUser,
   platformConnections,
   publishLog,
   scheduledPosts,
   socialConnections,
-  InsertSocialConnection,
   inviteCodes,
-  InsertInviteCode,
   users,
 } from "../drizzle/schema";
+import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
+
 import { ENV } from "./_core/env";
+
+// Type exports for insert/select operations
+export type InsertApprovalHistory = InferInsertModel<typeof approvalHistory>;
+export type InsertContentPost = InferInsertModel<typeof contentPosts>;
+export type InsertContentTemplate = InferInsertModel<typeof contentTemplates>;
+export type InsertScheduledPost = InferInsertModel<typeof scheduledPosts>;
+export type InsertUser = InferInsertModel<typeof users>;
+export type InsertSocialConnection = InferInsertModel<typeof socialConnections>;
+export type InsertInviteCode = InferInsertModel<typeof inviteCodes>;
+export type User = InferSelectModel<typeof users>;
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -66,8 +71,8 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     updateSet.role = "admin";
   }
 
-  if (!values.lastSignedIn) values.lastSignedIn = new Date();
-  if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date();
+  if (!values.lastSignedIn) values.lastSignedIn = new Date().toISOString();
+  if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date().toISOString();
 
   await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
 }
@@ -163,11 +168,11 @@ export async function getApprovalHistoryByPost(postId: number) {
 
 // ─── Scheduled Posts ───────────────────────────────────────────────────────────
 
-export async function createScheduledPost(data: InsertScheduledPost) {
+export async function createScheduledPost(data: InsertScheduledPost): Promise<{ id: number }> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   const [result] = await db.insert(scheduledPosts).values(data).$returningId();
-  return result;
+  return { id: result.id };
 }
 
 export async function getScheduledPosts(filters?: { status?: string; from?: Date; to?: Date }) {
@@ -417,7 +422,7 @@ export async function saveSocialConnection(data: InsertSocialConnection) {
         platformUserId: data.platformUserId,
         platformUsername: data.platformUsername,
         isActive: true,
-        updatedAt: new Date(),
+        updatedAt: new Date().toISOString(),
       })
       .where(eq(socialConnections.id, existing[0].id));
   } else {
@@ -490,7 +495,7 @@ export async function markInviteCodeAsUsed(code: string, usedBy: number) {
     .update(inviteCodes)
     .set({
       usedBy,
-      usedAt: new Date(),
+      usedAt: new Date().toISOString(),
     })
     .where(eq(inviteCodes.code, code));
 }

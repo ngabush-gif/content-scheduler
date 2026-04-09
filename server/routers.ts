@@ -47,6 +47,7 @@ import {
 } from "./db";
 import { publishToFacebook, publishToInstagram, publishToTikTok } from "./platformPublisher";
 import { generateAIImage, uploadMediaFile, validateUploadedFile } from "./imageHandler";
+import { scheduleRouter } from "./scheduleRouter";
 
 // ─── Admin guard ──────────────────────────────────────────────────────────────
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -221,7 +222,7 @@ export const appRouter = router({
         if (post.status !== "approved" && ctx.user.role !== "admin") {
           throw new TRPCError({ code: "FORBIDDEN", message: "Only approved posts can be saved to library" });
         }
-        await updateContentPost(input.id, { isLibraryItem: true });
+        await updateContentPost(input.id, { isLibraryItem: 1 });
         return { success: true };
       }),
 
@@ -246,7 +247,7 @@ export const appRouter = router({
         await updateContentPost(input.id, {
           status: "approved",
           approvedById: ctx.user.id,
-          approvedAt: new Date(),
+          approvedAt: new Date().toISOString(),
         });
         await addApprovalHistory({
           postId: input.id,
@@ -510,7 +511,9 @@ Return JSON with:
       }),
   }),
 
-  // ─── Scheduling ───────────────────────────────────────────────────────────
+  // ─── Scheduling (moved to scheduleRouter) ───────────────────────────────────
+  // Old schedule router removed - now using dedicated scheduleRouter
+  /*
   schedule: router({
     create: protectedProcedure
       .input(
@@ -530,9 +533,9 @@ Return JSON with:
           postId: input.postId,
           scheduledById: ctx.user.id,
           platform: input.platform,
-          scheduledAt: new Date(input.scheduledAt),
+          scheduledAt: new Date(input.scheduledAt).toISOString(),
         });
-        await updateContentPost(input.postId, { scheduledAt: new Date(input.scheduledAt) });
+        await updateContentPost(input.postId, { scheduledAt: new Date(input.scheduledAt).toISOString() });
         return result;
       }),
 
@@ -592,7 +595,7 @@ Return JSON with:
           accountName: input.accountName,
           accountId: input.accountId,
           accessToken: input.accessToken,
-          isActive: true,
+          isActive: 1,
         });
         return { success: true };
       }),
@@ -702,7 +705,7 @@ Return JSON with:
 
         const anySuccess = results.some((r) => r.success);
         if (anySuccess) {
-          await updateContentPost(input.postId, { status: "published", publishedAt: new Date() });
+          await updateContentPost(input.postId, { status: "published", publishedAt: new Date().toISOString() });
         }
 
         return { results };
@@ -739,18 +742,18 @@ Return JSON with:
             postId: input.postId,
             scheduledById: ctx.user.id,
             platform: platform as any,
-            scheduledAt: input.scheduledAt,
-            status: "pending",
+            scheduledAt: input.scheduledAt.toISOString(),
+            status: "scheduled",
           });
         }
 
         // Update post with scheduled time
-        await updateContentPost(input.postId, { scheduledAt: input.scheduledAt });
+        await updateContentPost(input.postId, { scheduledAt: input.scheduledAt.toISOString() });
 
         return { success: true, message: `Post scheduled for ${input.scheduledAt.toLocaleString()}` };
       }),
-
   }),
+  */
 
   // ─── Media & Images ──────────────────────────────────────────────────────────
   media: router({
@@ -825,7 +828,7 @@ Return JSON with:
         await createTemplate({
           ...input,
           createdById: ctx.user.id,
-          isDefault: input.isDefault ?? false,
+          isDefault: input.isDefault ? 1 : 0,
         });
         return { success: true };
       }),
@@ -953,9 +956,9 @@ Generate post #${i + 1}. Return JSON with: {"caption": "...", "hashtags": "#tag1
           accessToken: input.accessToken,
           platformUserId: input.platformUserId,
           platformUsername: input.platformUsername,
-          isActive: true,
-          connectedAt: new Date(),
-          updatedAt: new Date(),
+          isActive: 1,
+          connectedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         });
         return { success: true };
       }),
@@ -973,6 +976,9 @@ Generate post #${i + 1}. Return JSON with: {"caption": "...", "hashtags": "#tag1
       return getAnalyticsSummary();
     }),
   }),
+
+  // ─── Scheduling & Direct Publishing ────────────────────────────────────────
+  schedule: scheduleRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -1,206 +1,172 @@
-import {
-  boolean,
-  int,
-  json,
-  mysqlEnum,
-  mysqlTable,
-  text,
-  timestamp,
-  varchar,
-} from "drizzle-orm/mysql-core";
+import { mysqlTable, mysqlSchema, AnyMySqlColumn, int, mysqlEnum, text, timestamp, varchar, index, tinyint } from "drizzle-orm/mysql-core"
+import { sql } from "drizzle-orm"
 
-// ─── Users ────────────────────────────────────────────────────────────────────
-export const users = mysqlTable("users", {
-  id: int("id").autoincrement().primaryKey(),
-  openId: varchar("openId", { length: 64 }).notNull().unique(),
-  name: text("name"),
-  email: varchar("email", { length: 320 }),
-  loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
-  avatarUrl: text("avatarUrl"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-  lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
-});
-
-export type User = typeof users.$inferSelect;
-export type InsertUser = typeof users.$inferInsert;
-
-// ─── Content Posts ─────────────────────────────────────────────────────────────
-export const contentPosts = mysqlTable("content_posts", {
-  id: int("id").autoincrement().primaryKey(),
-  authorId: int("authorId").notNull(),
-  title: varchar("title", { length: 255 }).notNull(),
-  niche: mysqlEnum("niche", [
-    "time_freedom",
-    "parents",
-    "side_hustlers",
-    "online_business",
-    "cultural",
-    "over_50",
-    "scam_survivors",
-  ]).notNull(),
-  platform: mysqlEnum("platform", ["facebook", "instagram", "tiktok", "all"]).notNull(),
-  contentType: mysqlEnum("contentType", ["caption", "script", "hashtags", "ideas", "full_post"]).notNull(),
-  caption: text("caption"),
-  hashtags: text("hashtags"),
-  script: text("script"),
-  ideas: text("ideas"),
-  fullContent: text("fullContent"),
-  imageUrl: text("imageUrl"), // URL to uploaded or AI-generated image
-  tone: varchar("tone", { length: 100 }),
-  contentStyle: mysqlEnum("contentStyle", ["motivational", "engagement", "personal_story", "curiosity", "opportunity", "tips_values"]),
-  status: mysqlEnum("status", ["draft", "pending_review", "approved", "rejected", "published"]).default("draft").notNull(),
-  rejectionNote: text("rejectionNote"),
-  approvedById: int("approvedById"),
-  approvedAt: timestamp("approvedAt"),
-  publishedAt: timestamp("publishedAt"),
-  scheduledAt: timestamp("scheduledAt"),
-  isLibraryItem: boolean("isLibraryItem").default(false).notNull(),
-  aiGeneratedImage: boolean("aiGeneratedImage").default(false).notNull(), // Track if image was AI-generated
-  tags: text("tags"), // JSON array of strings
-  mediaType: mysqlEnum("mediaType", ["none", "image", "video"]).default("none").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
-
-export type ContentPost = typeof contentPosts.$inferSelect;
-export type InsertContentPost = typeof contentPosts.$inferInsert;
-
-// ─── Media Uploads ────────────────────────────────────────────────────────────
-export const mediaUploads = mysqlTable("media_uploads", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
-  fileUrl: text("fileUrl").notNull(),
-  fileType: mysqlEnum("fileType", ["image", "video"]).notNull(),
-  fileName: varchar("fileName", { length: 255 }),
-  fileSize: int("fileSize"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
-
-export type MediaUpload = typeof mediaUploads.$inferSelect;
-export type InsertMediaUpload = typeof mediaUploads.$inferInsert;
-
-// ─── Approval History ──────────────────────────────────────────────────────────
 export const approvalHistory = mysqlTable("approval_history", {
-  id: int("id").autoincrement().primaryKey(),
-  postId: int("postId").notNull(),
-  reviewerId: int("reviewerId").notNull(),
-  action: mysqlEnum("action", ["submitted", "approved", "rejected", "revision_requested", "resubmitted"]).notNull(),
-  note: text("note"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
+	id: int().autoincrement().notNull(),
+	postId: int().notNull(),
+	reviewerId: int().notNull(),
+	action: mysqlEnum(['submitted','approved','rejected','revision_requested','resubmitted']).notNull(),
+	note: text(),
+	createdAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
 });
 
-export type ApprovalHistory = typeof approvalHistory.$inferSelect;
-export type InsertApprovalHistory = typeof approvalHistory.$inferInsert;
-
-// ─── Scheduled Posts ───────────────────────────────────────────────────────────
-export const scheduledPosts = mysqlTable("scheduled_posts", {
-  id: int("id").autoincrement().primaryKey(),
-  postId: int("postId").notNull(),
-  scheduledById: int("scheduledById").notNull(),
-  platform: mysqlEnum("platform", ["facebook", "instagram", "tiktok"]).notNull(),
-  scheduledAt: timestamp("scheduledAt").notNull(),
-  status: mysqlEnum("status", ["pending", "published", "failed", "cancelled"]).default("pending").notNull(),
-  publishedAt: timestamp("publishedAt"),
-  errorMessage: text("errorMessage"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+export const contentPosts = mysqlTable("content_posts", {
+	id: int().autoincrement().notNull(),
+	authorId: int().notNull(),
+	title: varchar({ length: 255 }).notNull(),
+	niche: mysqlEnum(['time_freedom','parents','side_hustlers','online_business','cultural','over_50','scam_survivors']).notNull(),
+	platform: mysqlEnum(['facebook','instagram','tiktok','all']).notNull(),
+	contentType: mysqlEnum(['caption','script','hashtags','ideas','full_post']).notNull(),
+	caption: text(),
+	hashtags: text(),
+	script: text(),
+	ideas: text(),
+	fullContent: text(),
+	tone: varchar({ length: 100 }),
+	status: mysqlEnum(['draft','pending_review','approved','rejected','published']).default('draft').notNull(),
+	rejectionNote: text(),
+	approvedById: int(),
+	approvedAt: timestamp({ mode: 'string' }),
+	publishedAt: timestamp({ mode: 'string' }),
+	scheduledAt: timestamp({ mode: 'string' }),
+	isLibraryItem: tinyint().default(0).notNull(),
+	tags: text(),
+	createdAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
+	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
+	imageUrl: text(),
+	aiGeneratedImage: tinyint().default(0).notNull(),
+	mediaType: mysqlEnum(['none','image','video']).default('none').notNull(),
+	contentStyle: mysqlEnum(['motivational','engagement','personal_story','curiosity','opportunity','tips_values']),
 });
 
-export type ScheduledPost = typeof scheduledPosts.$inferSelect;
-export type InsertScheduledPost = typeof scheduledPosts.$inferInsert;
-
-// ─── Platform Connections ──────────────────────────────────────────────────────
-export const platformConnections = mysqlTable("platform_connections", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
-  platform: mysqlEnum("platform", ["facebook", "instagram", "tiktok"]).notNull(),
-  accountName: varchar("accountName", { length: 255 }),
-  accountId: varchar("accountId", { length: 255 }),
-  accessToken: text("accessToken"),
-  refreshToken: text("refreshToken"),
-  expiresAt: timestamp("expiresAt"),
-  isActive: boolean("isActive").default(true).notNull(),
-  connectedAt: timestamp("connectedAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
-
-export type PlatformConnection = typeof platformConnections.$inferSelect;
-export type InsertPlatformConnection = typeof platformConnections.$inferInsert;
-
-// ─── Publish Log ───────────────────────────────────────────────────────────────
-export const publishLog = mysqlTable("publish_log", {
-  id: int("id").autoincrement().primaryKey(),
-  postId: int("postId").notNull(),
-  publishedById: int("publishedById").notNull(),
-  platform: mysqlEnum("platform", ["facebook", "instagram", "tiktok"]).notNull(),
-  status: mysqlEnum("status", ["success", "failed"]).notNull(),
-  platformPostId: varchar("platformPostId", { length: 255 }),
-  errorMessage: text("errorMessage"),
-  publishedAt: timestamp("publishedAt").defaultNow().notNull(),
-});
-
-export type PublishLog = typeof publishLog.$inferSelect;
-export type InsertPublishLog = typeof publishLog.$inferInsert;
-
-// Content Templates
 export const contentTemplates = mysqlTable("content_templates", {
-  id: int("id").autoincrement().primaryKey(),
-  createdById: int("createdById").notNull(),
-  name: varchar("name", { length: 255 }).notNull(),
-  description: text("description"),
-  niche: mysqlEnum("niche", [
-    "time_freedom",
-    "parents",
-    "side_hustlers",
-    "online_business",
-    "cultural",
-    "over_50",
-    "scam_survivors",
-  ]).notNull(),
-  category: varchar("category", { length: 100 }).notNull(),
-  prompt: text("prompt").notNull(),
-  exampleContent: text("exampleContent"),
-  isDefault: boolean("isDefault").default(false).notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+	id: int().autoincrement().notNull(),
+	createdById: int().notNull(),
+	name: varchar({ length: 255 }).notNull(),
+	description: text(),
+	niche: mysqlEnum(['time_freedom','parents','side_hustlers','online_business','cultural','over_50','scam_survivors']).notNull(),
+	category: varchar({ length: 100 }).notNull(),
+	prompt: text().notNull(),
+	exampleContent: text(),
+	isDefault: tinyint().default(0).notNull(),
+	createdAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
+	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
 });
 
-export type ContentTemplate = typeof contentTemplates.$inferSelect;
-export type InsertContentTemplate = typeof contentTemplates.$inferInsert;
-
-// ─── Social Connections (User OAuth Tokens) ────────────────────────────────────
-export const socialConnections = mysqlTable("social_connections", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
-  platform: mysqlEnum("platform", ["facebook", "instagram", "tiktok"]).notNull(),
-  platformUserId: varchar("platformUserId", { length: 255 }).notNull(),
-  platformUsername: varchar("platformUsername", { length: 255 }),
-  accessToken: text("accessToken").notNull(),
-  refreshToken: text("refreshToken"),
-  expiresAt: timestamp("expiresAt"),
-  scope: text("scope"),
-  isActive: boolean("isActive").default(true).notNull(),
-  lastVerifiedAt: timestamp("lastVerifiedAt"),
-  connectedAt: timestamp("connectedAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
-
-export type SocialConnection = typeof socialConnections.$inferSelect;
-export type InsertSocialConnection = typeof socialConnections.$inferInsert;
-
-// ─── Invite Codes (Team Access) ────────────────────────────────────────────────
 export const inviteCodes = mysqlTable("invite_codes", {
-  id: int("id").autoincrement().primaryKey(),
-  code: varchar("code", { length: 32 }).notNull().unique(),
-  createdBy: int("createdBy").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  expiresAt: timestamp("expiresAt"),
-  usedBy: int("usedBy"),
-  usedAt: timestamp("usedAt"),
-  isActive: boolean("isActive").default(true).notNull(),
+	id: int().autoincrement().notNull(),
+	code: varchar({ length: 32 }).notNull(),
+	createdBy: int().notNull(),
+	createdAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
+	expiresAt: timestamp({ mode: 'string' }),
+	usedBy: int(),
+	usedAt: timestamp({ mode: 'string' }),
+	isActive: tinyint().default(1).notNull(),
+},
+(table) => [
+	index("invite_codes_code_unique").on(table.code),
+]);
+
+export const platformConnections = mysqlTable("platform_connections", {
+	id: int().autoincrement().notNull(),
+	userId: int().notNull(),
+	platform: mysqlEnum(['facebook','instagram','tiktok']).notNull(),
+	accountName: varchar({ length: 255 }),
+	accountId: varchar({ length: 255 }),
+	accessToken: text(),
+	isActive: tinyint().default(1).notNull(),
+	connectedAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
+	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
+	refreshToken: text(),
+	expiresAt: timestamp({ mode: 'string' }),
 });
 
-export type InviteCode = typeof inviteCodes.$inferSelect;
-export type InsertInviteCode = typeof inviteCodes.$inferInsert;
+export const publishLog = mysqlTable("publish_log", {
+	id: int().autoincrement().notNull(),
+	postId: int().notNull(),
+	publishedById: int().notNull(),
+	platform: mysqlEnum(['facebook','instagram','tiktok']).notNull(),
+	status: mysqlEnum(['success','failed']).notNull(),
+	platformPostId: varchar({ length: 255 }),
+	errorMessage: text(),
+	publishedAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
+});
+
+export const publishingJobs = mysqlTable("publishing_jobs", {
+	id: int().autoincrement().notNull(),
+	scheduledPostId: int().notNull(),
+	userId: int().notNull(),
+	postId: int().notNull(),
+	platform: mysqlEnum(['facebook','instagram','tiktok']).notNull(),
+	pageId: varchar({ length: 255 }),
+	status: mysqlEnum(['running','success','failed_auth','failed_retrying','failed_permanent']).default('running').notNull(),
+	remotePostId: varchar({ length: 255 }),
+	errorCode: varchar({ length: 100 }),
+	errorMessage: text(),
+	httpStatusCode: int(),
+	responseBody: text(),
+	attemptNumber: int().default(1).notNull(),
+	startedAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
+	completedAt: timestamp({ mode: 'string' }),
+	createdAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
+	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
+},
+(table) => [
+	index("idx_publishing_jobs_scheduled_post").on(table.scheduledPostId),
+	index("idx_publishing_jobs_user").on(table.userId),
+]);
+
+export const scheduledPosts = mysqlTable("scheduled_posts", {
+	id: int().autoincrement().notNull(),
+	postId: int().notNull(),
+	scheduledById: int().notNull(),
+	platform: mysqlEnum(['facebook','instagram','tiktok']).notNull(),
+	scheduledAt: timestamp({ mode: 'string' }).notNull(),
+	status: mysqlEnum(['scheduled','publishing','published','failed','cancelled','reconnect_required']).default('scheduled').notNull(),
+	publishedAt: timestamp({ mode: 'string' }),
+	errorMessage: text(),
+	createdAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
+	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
+	connectionId: int().default(1),
+	pageId: varchar({ length: 255 }),
+	publishingStartedAt: timestamp({ mode: 'string' }),
+	remotePostId: varchar({ length: 255 }),
+	retryCount: int().default(0),
+	nextRetryAt: timestamp({ mode: 'string' }),
+	lastError: text(),
+},
+(table) => [
+	index("idx_scheduled_posts_status_time").on(table.status, table.scheduledAt, table.nextRetryAt),
+]);
+
+export const socialConnections = mysqlTable("social_connections", {
+	id: int().autoincrement().notNull(),
+	userId: int().notNull(),
+	platform: mysqlEnum(['facebook','instagram','tiktok']).notNull(),
+	platformUserId: varchar({ length: 255 }).notNull(),
+	platformUsername: varchar({ length: 255 }),
+	accessToken: text().notNull(),
+	refreshToken: text(),
+	expiresAt: timestamp({ mode: 'string' }),
+	scope: text(),
+	isActive: tinyint().default(1).notNull(),
+	lastVerifiedAt: timestamp({ mode: 'string' }),
+	connectedAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
+	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
+});
+
+export const users = mysqlTable("users", {
+	id: int().autoincrement().notNull(),
+	openId: varchar({ length: 64 }).notNull(),
+	name: text(),
+	email: varchar({ length: 320 }),
+	loginMethod: varchar({ length: 64 }),
+	role: mysqlEnum(['user','admin']).default('user').notNull(),
+	createdAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
+	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
+	lastSignedIn: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
+	avatarUrl: text(),
+},
+(table) => [
+	index("users_openId_unique").on(table.openId),
+]);
