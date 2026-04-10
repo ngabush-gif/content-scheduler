@@ -126,7 +126,13 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const result = await createContentPost({ ...input, authorId: ctx.user.id, status: "draft" });
+        const dbData = {
+          ...input,
+          authorId: ctx.user.id,
+          status: "draft" as const,
+          aiGeneratedImage: input.aiGeneratedImage ? 1 : (input.aiGeneratedImage === false ? 0 : undefined),
+        };
+        const result = await createContentPost(dbData);
         return result;
       }),
 
@@ -185,7 +191,12 @@ export const appRouter = router({
           throw new TRPCError({ code: "FORBIDDEN" });
         }
         const { id, ...data } = input;
-        await updateContentPost(id, data);
+        // Convert boolean to number for database
+        const dbData = {
+          ...data,
+          aiGeneratedImage: data.aiGeneratedImage ? 1 : (data.aiGeneratedImage === false ? 0 : undefined),
+        };
+        await updateContentPost(id, dbData);
         return { success: true };
       }),
 

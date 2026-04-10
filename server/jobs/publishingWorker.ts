@@ -18,9 +18,9 @@ interface PublishingContext {
   scheduledPostId: number;
   postId: number;
   userId: number;
-  connectionId: number;
+  connectionId: number | null;
   platform: "facebook" | "instagram" | "tiktok";
-  pageId?: string;
+  pageId?: string | null;
   scheduledAt: Date;
 }
 
@@ -59,17 +59,14 @@ async function claimScheduledPost(): Promise<PublishingContext | null> {
     if (!db) return null;
     const result = await db.transaction(async (tx) => {
       // Find ONE post ready to publish (status = scheduled, scheduledAt <= now, not in retry window)
-      const readyPosts = await tx.query.scheduledPosts.findMany({
-        where: and(
-          eq(scheduledPosts.status, "scheduled"),
-          lte(scheduledPosts.scheduledAt, new Date().toISOString()),
-          or(
-            isNull(scheduledPosts.nextRetryAt),
-            lte(scheduledPosts.nextRetryAt, new Date().toISOString())
-          )
-        ),
-        limit: 1,
-      });
+      const readyPosts = await tx.select().from(scheduledPosts).where(and(
+        eq(scheduledPosts.status, "scheduled"),
+        lte(scheduledPosts.scheduledAt, new Date().toISOString()),
+        or(
+          isNull(scheduledPosts.nextRetryAt),
+          lte(scheduledPosts.nextRetryAt, new Date().toISOString())
+        )
+      )).limit(1);
 
       if (!readyPosts.length) {
         return null;
@@ -167,6 +164,11 @@ export async function executePublishingJobs(): Promise<void> {
  * Publish a single scheduled post to the user's selected platform
  */
 async function publishScheduledPost(context: PublishingContext): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    console.error("[PublishingWorker] DB unavailable");
+    return;
+  }
   const jobId = await createPublishingJob(context);
 
   try {
@@ -182,6 +184,9 @@ async function publishScheduledPost(context: PublishingContext): Promise<void> {
     }
 
     // Step 2: Get user's platform connection with credentials
+    if (!context.connectionId) {
+      throw new Error("No connection ID provided");
+    }
     const connection = await getPlatformConnectionWithCredentials(
       context.userId,
       context.connectionId
@@ -234,9 +239,9 @@ async function publishScheduledPost(context: PublishingContext): Promise<void> {
         .update(scheduledPosts)
         .set({
           status: "published",
-          publishedAt: new Date(),
+          publishedAt: new Date().toISOString(),
           remotePostId: result.platformPostId,
-          updatedAt: new Date(),
+          updatedAt: new Date().toISOString(),
         })
         .where(eq(scheduledPosts.id, context.scheduledPostId));
 
@@ -401,9 +406,10 @@ async function handlePublishingFailure(
   jobId: number,
   errorClassification: ErrorClassification
 ): Promise<void> {
-  const currentPost = await db.query.scheduledPosts.findFirst({
-    where: eq(scheduledPosts.id, context.scheduledPostId),
-  });
+  const db = await getDb();
+  if (!db) return;
+  const posts = await db.select().from(scheduledPosts).where(eq(scheduledPosts.id, context.scheduledPostId)).limit(1);
+  const currentPost = posts[0];
 
   const currentRetryCount = currentPost?.retryCount || 0;
   const maxRetries = 5;
@@ -431,7 +437,7 @@ async function handlePublishingFailure(
       .set({
         status: "reconnect_required",
         lastError: errorClassification.message,
-        updatedAt: new Date(),
+        updatedAt: new Date().toISOString(),
       })
       .where(eq(scheduledPosts.id, context.scheduledPostId));
 
@@ -458,9 +464,9 @@ async function handlePublishingFailure(
       .set({
         status: "scheduled", // Reset to scheduled so worker picks it up again
         retryCount: currentRetryCount + 1,
-        nextRetryAt,
+        nextRetryAt: nextRetryAt.toISOString(),
         lastError: errorClassification.message,
-        updatedAt: new Date(),
+        updatedAt: new Date().toISOString(),
       })
       .where(eq(scheduledPosts.id, context.scheduledPostId));
 
@@ -488,7 +494,7 @@ async function handlePublishingFailure(
     .set({
       status: "failed",
       lastError: failureReason,
-      updatedAt: new Date(),
+      updatedAt: new Date().toISOString(),
     })
     .where(eq(scheduledPosts.id, context.scheduledPostId));
 
@@ -530,9 +536,10 @@ function calculateNextRetryTime(attemptNumber: number): Date {
  * Get content post by ID
  */
 async function getContentPostById(postId: number): Promise<any> {
-  return db.query.contentPosts.findFirst({
-    where: eq(contentPosts.id, postId),
-  });
+  const db = await getDb();
+  if (!db) return null;
+  const posts = await db.select().from(contentPosts).where(eq(contentPosts.id, postId)).limit(1);
+  return posts[0];
 }
 
 /**
@@ -542,18 +549,21 @@ async function getPlatformConnectionWithCredentials(
   userId: number,
   connectionId: number
 ): Promise<any> {
-  return db.query.platformConnections.findFirst({
-    where: and(
-      eq(platformConnections.id, connectionId),
-      eq(platformConnections.userId, userId)
-    ),
-  });
+  const db = await getDb();
+  if (!db) return null;
+  const connections = await db.select().from(platformConnections).where(and(
+    eq(platformConnections.id, connectionId),
+    eq(platformConnections.userId, userId)
+  )).limit(1);
+  return connections[0];
 }
 
 /**
  * Create publishing job record
  */
 async function createPublishingJob(context: PublishingContext): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
   const result = await db.insert(publishingJobs).values({
     scheduledPostId: context.scheduledPostId,
     userId: context.userId,
@@ -561,12 +571,12 @@ async function createPublishingJob(context: PublishingContext): Promise<number> 
     platform: context.platform,
     pageId: context.pageId,
     status: "running",
-    startedAt: new Date(),
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  });
+    startedAt: new Date().toISOString(),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }).$returningId();
 
-  return Number(result.insertId);
+  return (result as any)[0]?.id || 0;
 }
 
 /**
@@ -575,7 +585,7 @@ async function createPublishingJob(context: PublishingContext): Promise<number> 
 async function updatePublishingJob(
   jobId: number,
   updates: Partial<{
-    status: string;
+    status: "success" | "failed_auth" | "failed_retrying" | "failed_permanent" | "running";
     completedAt: Date;
     remotePostId: string;
     errorCode: string;
@@ -583,12 +593,15 @@ async function updatePublishingJob(
     attemptNumber: number;
   }>
 ): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  const dbUpdates: any = { ...updates, updatedAt: new Date().toISOString() };
+  if (updates.completedAt) {
+    dbUpdates.completedAt = updates.completedAt.toISOString();
+  }
   await db
     .update(publishingJobs)
-    .set({
-      ...updates,
-      updatedAt: new Date(),
-    })
+    .set(dbUpdates)
     .where(eq(publishingJobs.id, jobId));
 }
 

@@ -131,7 +131,7 @@ export async function getAllContentPosts(filters?: {
   if (filters?.status) conditions.push(eq(contentPosts.status, filters.status as any));
   if (filters?.niche) conditions.push(eq(contentPosts.niche, filters.niche as any));
   if (filters?.platform) conditions.push(eq(contentPosts.platform, filters.platform as any));
-  if (filters?.isLibraryItem !== undefined) conditions.push(eq(contentPosts.isLibraryItem, filters.isLibraryItem));
+  if (filters?.isLibraryItem !== undefined) conditions.push(eq(contentPosts.isLibraryItem, filters.isLibraryItem ? 1 : 0));
 
   const query = db.select().from(contentPosts);
   if (conditions.length > 0) {
@@ -171,17 +171,22 @@ export async function getApprovalHistoryByPost(postId: number) {
 export async function createScheduledPost(data: InsertScheduledPost): Promise<{ id: number }> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
-  const [result] = await db.insert(scheduledPosts).values(data).$returningId();
-  return { id: result.id };
+  const result = await db.insert(scheduledPosts).values(data).$returningId();
+  return { id: (result as any)[0]?.id || 0 };
 }
 
-export async function getScheduledPosts(filters?: { status?: string; from?: Date; to?: Date }) {
+export async function getScheduledPosts(userIdOrFilters?: number | { status?: string; from?: Date; to?: Date }) {
   const db = await getDb();
   if (!db) return [];
   const conditions = [];
-  if (filters?.status) conditions.push(eq(scheduledPosts.status, filters.status as any));
-  if (filters?.from) conditions.push(gte(scheduledPosts.scheduledAt, filters.from));
-  if (filters?.to) conditions.push(lte(scheduledPosts.scheduledAt, filters.to));
+  if (typeof userIdOrFilters === 'number') {
+    conditions.push(eq(scheduledPosts.scheduledById, userIdOrFilters));
+  } else if (userIdOrFilters) {
+    const filters = userIdOrFilters;
+    if (filters.status) conditions.push(eq(scheduledPosts.status, filters.status as any));
+    if (filters.from) conditions.push(gte(scheduledPosts.scheduledAt, filters.from.toISOString()));
+    if (filters.to) conditions.push(lte(scheduledPosts.scheduledAt, filters.to.toISOString()));
+  }
 
   const query = db.select().from(scheduledPosts);
   if (conditions.length > 0) {
@@ -247,7 +252,7 @@ export async function upsertPlatformConnection(data: {
       accountName: data.accountName,
       accountId: data.pageId ?? data.accountId,
       accessToken: data.accessToken,
-      isActive: data.isActive ?? true,
+      isActive: (data.isActive ?? true) ? 1 : 0,
     });
   }
 }
@@ -257,7 +262,7 @@ export async function disconnectPlatform(userId: number, platform: "facebook" | 
   if (!db) throw new Error("DB unavailable");
   await db
     .update(platformConnections)
-    .set({ isActive: false, accessToken: null, accountId: null })
+    .set({ isActive: 0, accessToken: null, accountId: null })
     .where(and(eq(platformConnections.userId, userId), eq(platformConnections.platform, platform)));
 }
 
@@ -267,7 +272,7 @@ export async function getPlatformConnectionWithToken(userId: number, platform: "
   const result = await db
     .select()
     .from(platformConnections)
-    .where(and(eq(platformConnections.userId, userId), eq(platformConnections.platform, platform), eq(platformConnections.isActive, true)))
+    .where(and(eq(platformConnections.userId, userId), eq(platformConnections.platform, platform), eq(platformConnections.isActive, 1)))
     .limit(1);
   return result[0];
 }
@@ -360,7 +365,7 @@ export async function getAllTemplates() {
 export async function getDefaultTemplates() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(contentTemplates).where(eq(contentTemplates.isDefault, true)).orderBy(contentTemplates.niche, contentTemplates.category);
+  return db.select().from(contentTemplates).where(eq(contentTemplates.isDefault, 1)).orderBy(contentTemplates.niche, contentTemplates.category);
 }
 
 export async function updateTemplate(id: number, data: Partial<InsertContentTemplate>) {
@@ -397,7 +402,7 @@ export async function getSocialConnectionByPlatform(userId: number, platform: "f
   const result = await db
     .select()
     .from(socialConnections)
-    .where(and(eq(socialConnections.userId, userId), eq(socialConnections.platform, platform), eq(socialConnections.isActive, true)))
+    .where(and(eq(socialConnections.userId, userId), eq(socialConnections.platform, platform), eq(socialConnections.isActive, 1)))
     .limit(1);
   return result[0];
 }
@@ -421,7 +426,7 @@ export async function saveSocialConnection(data: InsertSocialConnection) {
         accessToken: data.accessToken,
         platformUserId: data.platformUserId,
         platformUsername: data.platformUsername,
-        isActive: true,
+        isActive: 1,
         updatedAt: new Date().toISOString(),
       })
       .where(eq(socialConnections.id, existing[0].id));
@@ -452,8 +457,8 @@ export async function generateInviteCode(createdBy: number): Promise<string> {
   await db.insert(inviteCodes).values({
     code,
     createdBy,
-    isActive: true,
-  });
+        isActive: 1,
+      });
   
   return code;
 }
@@ -479,7 +484,7 @@ export async function validateInviteCode(code: string) {
     .where(
       and(
         eq(inviteCodes.code, code),
-        eq(inviteCodes.isActive, true)
+        eq(inviteCodes.isActive, 1)
       )
     )
     .limit(1);
@@ -506,6 +511,6 @@ export async function revokeInviteCode(code: string) {
   
   await db
     .update(inviteCodes)
-    .set({ isActive: false })
+    .set({ isActive: 0 })
     .where(eq(inviteCodes.code, code));
 }
