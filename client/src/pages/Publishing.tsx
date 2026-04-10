@@ -70,12 +70,12 @@ function PublishingContent() {
 
   const utils = trpc.useUtils();
 
-  const publishMutation = trpc.publish.post.useMutation({
+  const publishMutation = trpc.schedule.create.useMutation({
     onSuccess: () => {
       utils.content.list.invalidate();
-      toast.success("Post marked as published!");
+      toast.success("Post scheduled for publishing!");
     },
-    onError: (e) => {
+    onError: (e: any) => {
       toast.error(e.message);
     },
   });
@@ -159,7 +159,14 @@ function PublishingContent() {
   };
 
   const markAsPublished = (postId: number, platforms: string[]) => {
-    publishMutation.mutate({ postId, platforms: platforms as any });
+    // For now, just schedule to first platform
+    const platform = platforms[0] as "facebook" | "instagram" | "tiktok";
+    publishMutation.mutate({
+      postId,
+      connectionId: 1, // TODO: Get from user's connections
+      platform,
+      scheduledAt: new Date(),
+    });
   };
 
   if (!isAdmin) {

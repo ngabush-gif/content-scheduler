@@ -63,7 +63,7 @@ function GeneratorContent() {
 
   const createPostMutation = trpc.content.create.useMutation({
     onSuccess: (data) => {
-      setSavedPostId(data?.id ?? null);
+      setSavedPostId((data as any)?.id ?? null);
       utils.content.list.invalidate();
       toast.success("Content saved as draft!");
     },

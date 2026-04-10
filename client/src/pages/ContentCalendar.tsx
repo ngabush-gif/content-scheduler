@@ -24,6 +24,11 @@ function CalendarContent() {
   const [scheduleModal, setScheduleModal] = useState<{ post: any; open: boolean } | null>(null);
   const [selectedPlatform, setSelectedPlatform] = useState<"facebook" | "instagram" | "tiktok">("instagram");
   const [selectedDateTime, setSelectedDateTime] = useState("");
+  const [selectedConnectionId, setSelectedConnectionId] = useState<number | null>(null);
+  const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
+
+  // TODO: Get user's platform connections
+  // const { data: connections } = trpc.connections.list.useQuery();
 
   const utils = trpc.useUtils();
 
@@ -33,10 +38,7 @@ function CalendarContent() {
   const firstDay = new Date(year, month, 1);
   const lastDay = new Date(year, month + 1, 0);
 
-  const { data: scheduled } = trpc.schedule.list.useQuery({
-    from: firstDay.getTime(),
-    to: lastDay.getTime(),
-  });
+  const { data: scheduled } = trpc.schedule.list.useQuery({});
 
   const { data: approvedPosts } = trpc.content.list.useQuery({ status: "approved" });
 
@@ -83,10 +85,16 @@ function CalendarContent() {
       toast.error("Please select a date and time");
       return;
     }
+    if (!selectedConnectionId) {
+      toast.error("Please select a platform connection");
+      return;
+    }
     scheduleMutation.mutate({
       postId: scheduleModal.post.id,
+      connectionId: selectedConnectionId,
+      pageId: selectedPageId || undefined,
       platform: selectedPlatform,
-      scheduledAt: new Date(selectedDateTime).getTime(),
+      scheduledAt: new Date(selectedDateTime),
     });
   };
 
