@@ -48,6 +48,7 @@ import {
 import { publishToFacebook, publishToInstagram, publishToTikTok } from "./platformPublisher";
 import { generateAIImage, uploadMediaFile, validateUploadedFile } from "./imageHandler";
 import { scheduleRouter } from "./scheduleRouter";
+import { connectionsRouter } from "./connectionsRouter";
 
 // ─── Admin guard ──────────────────────────────────────────────────────────────
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -990,6 +991,9 @@ Generate post #${i + 1}. Return JSON with: {"caption": "...", "hashtags": "#tag1
 
   // ─── Scheduling & Direct Publishing ────────────────────────────────────────
   schedule: scheduleRouter,
+
+  // ─── Platform Connections (OAuth) ────────────────────────────────────────
+  connections: connectionsRouter,
 });
 
 export type AppRouter = typeof appRouter;

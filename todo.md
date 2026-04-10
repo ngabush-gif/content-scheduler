@@ -182,3 +182,32 @@
 - [ ] Monitor job execution logs
 - [ ] Test error scenarios (expired token, rate limit, etc.)
 - [ ] Deploy to production
+
+
+## Facebook OAuth Connection Flow (NEW)
+
+### Phase 1: Backend OAuth Endpoints
+- [ ] Create tRPC endpoint: connections.getFacebookAuthUrl (returns Facebook OAuth URL)
+- [ ] Create tRPC endpoint: connections.handleFacebookCallback (exchanges code for token)
+- [ ] Implement Facebook Graph API client
+- [ ] Fetch user's Facebook pages from Graph API
+- [ ] Get page access token for each page
+
+### Phase 2: Database Storage
+- [ ] Verify platform_connections table has all required fields (pageId, pageName, accessToken)
+- [ ] Create database helper: saveFacebookConnection()
+- [ ] Create database helper: getFacebookConnections()
+- [ ] Create database helper: deleteFacebookConnection()
+
+### Phase 3: Frontend UI
+- [ ] Create Connections page component
+- [ ] Add "Connect Facebook" button
+- [ ] Handle Facebook OAuth callback redirect
+- [ ] Show list of connected pages
+- [ ] Add disconnect button
+
+### Phase 4: Testing
+- [ ] Test Facebook OAuth flow end-to-end
+- [ ] Verify token storage
+- [ ] Verify page list fetching
+- [ ] Run Test 1: Schedule and publish with real connection
