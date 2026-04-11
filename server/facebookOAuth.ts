@@ -53,7 +53,7 @@ export function getFacebookAuthUrl(state: string): string {
 }
 
 /**
- * Exchange authorization code for user access token
+ * Exchange authorization code for short-lived user access token
  */
 export async function exchangeCodeForToken(
   code: string
@@ -87,7 +87,41 @@ export async function exchangeCodeForToken(
 }
 
 /**
- * Fetch user's Facebook pages
+ * Exchange short-lived token for long-lived token
+ * Long-lived tokens last ~60 days and can be refreshed
+ */
+export async function exchangeForLongLivedToken(
+  shortLivedToken: string
+): Promise<FacebookTokenResponse> {
+  const appId = process.env.FACEBOOK_APP_ID;
+  const appSecret = process.env.FACEBOOK_APP_SECRET;
+
+  if (!appId || !appSecret) {
+    throw new Error("Facebook credentials not configured");
+  }
+
+  const url = new URL(`${FACEBOOK_GRAPH_URL}/oauth/access_token`);
+  url.searchParams.append("grant_type", "fb_exchange_token");
+  url.searchParams.append("client_id", appId);
+  url.searchParams.append("client_secret", appSecret);
+  url.searchParams.append("fb_exchange_token", shortLivedToken);
+
+  const response = await fetch(url.toString(), { method: "GET" });
+  const data = await response.json();
+
+  if (!response.ok || data.error) {
+    console.error("Facebook long-lived token exchange error:", data.error);
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: `Failed to exchange for long-lived token: ${data.error?.message || "Unknown error"}`,
+    });
+  }
+
+  return data as FacebookTokenResponse;
+}
+
+/**
+ * Fetch user's Facebook pages using long-lived token
  */
 export async function getUserPages(
   accessToken: string
@@ -113,6 +147,7 @@ export async function getUserPages(
 
 /**
  * Get page access token (for publishing)
+ * Page access tokens are long-lived and don't expire
  */
 export async function getPageAccessToken(
   pageId: string,
@@ -138,6 +173,7 @@ export async function getPageAccessToken(
 
 /**
  * Verify token is still valid
+ * Returns true if token is valid and not expired
  */
 export async function verifyToken(accessToken: string): Promise<boolean> {
   const url = new URL(`${FACEBOOK_GRAPH_URL}/debug_token`);
@@ -159,4 +195,16 @@ export async function verifyToken(accessToken: string): Promise<boolean> {
     console.error("Token verification error:", error);
     return false;
   }
+}
+
+/**
+ * Calculate token expiry date from expires_in seconds
+ */
+export function calculateTokenExpiry(expiresInSeconds?: number): string | null {
+  if (!expiresInSeconds) {
+    return null; // No expiry (page access tokens)
+  }
+
+  const expiryDate = new Date(Date.now() + expiresInSeconds * 1000);
+  return expiryDate.toISOString();
 }

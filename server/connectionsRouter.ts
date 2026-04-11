@@ -3,9 +3,11 @@ import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import {
   getFacebookAuthUrl,
   exchangeCodeForToken,
+  exchangeForLongLivedToken,
   getUserPages,
   getPageAccessToken,
   verifyToken,
+  calculateTokenExpiry,
 } from "./facebookOAuth";
 import { getDb } from "./db";
 import { platformConnections } from "../drizzle/schema";
@@ -25,7 +27,7 @@ export const connectionsRouter = router({
 
   /**
    * Handle Facebook OAuth callback
-   * Exchange code for token and save connection
+   * Exchange code for long-lived token and save connection
    */
   handleFacebookCallback: publicProcedure
     .input(
@@ -38,11 +40,16 @@ export const connectionsRouter = router({
     )
     .mutation(async ({ input }) => {
       try {
-        // Step 1: Exchange code for user access token
-        const tokenResponse = await exchangeCodeForToken(input.code);
-        const userAccessToken = tokenResponse.access_token;
+        // Step 1: Exchange code for short-lived user access token
+        const shortLivedTokenResponse = await exchangeCodeForToken(input.code);
+        const shortLivedToken = shortLivedTokenResponse.access_token;
 
-        // Step 2: Fetch user's pages
+        // Step 2: Exchange short-lived token for long-lived token (lasts ~60 days)
+        const longLivedTokenResponse = await exchangeForLongLivedToken(shortLivedToken);
+        const userAccessToken = longLivedTokenResponse.access_token;
+        const userTokenExpiry = calculateTokenExpiry(longLivedTokenResponse.expires_in);
+
+        // Step 3: Fetch user's pages using long-lived token
         const pages = await getUserPages(userAccessToken);
 
         if (!pages.length) {
@@ -52,7 +59,7 @@ export const connectionsRouter = router({
           });
         }
 
-        // Step 3: If user selected a specific page, use that; otherwise use first page
+        // Step 4: If user selected a specific page, use that; otherwise use first page
         const selectedPage = input.selectedPageId
           ? pages.find((p) => p.id === input.selectedPageId)
           : pages[0];
@@ -64,18 +71,15 @@ export const connectionsRouter = router({
           });
         }
 
-        // Step 4: Get page access token
+        // Step 5: Get page access token (page tokens don't expire)
         const pageAccessToken = await getPageAccessToken(
           selectedPage.id,
           userAccessToken
         );
 
-        // Step 5: Save connection to database
+        // Step 6: Save connection to database
         const db = await getDb();
         if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
-        const expiresAt = tokenResponse.expires_in
-          ? new Date(Date.now() + tokenResponse.expires_in * 1000).toISOString()
-          : null;
 
         // Check if connection already exists
         const existingConnection = await db
@@ -93,19 +97,19 @@ export const connectionsRouter = router({
         let connectionId: number;
 
         if (existingConnection.length > 0) {
-          // Update existing connection
+          // Update existing connection with new page token
           await db
             .update(platformConnections)
             .set({
               accessToken: pageAccessToken,
-              expiresAt,
+              expiresAt: userTokenExpiry,
               updatedAt: new Date().toISOString(),
             })
             .where(eq(platformConnections.id, existingConnection[0].id));
 
           connectionId = existingConnection[0].id;
         } else {
-          // Create new connection
+          // Create new connection with page token
           const result = await db.insert(platformConnections).values({
             userId: input.userId,
             platform: "facebook",
@@ -115,7 +119,7 @@ export const connectionsRouter = router({
             isActive: 1,
             connectedAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            expiresAt,
+            expiresAt: userTokenExpiry,
           });
 
           connectionId = result[0].insertId;
