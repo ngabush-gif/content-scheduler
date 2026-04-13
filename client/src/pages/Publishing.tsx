@@ -67,6 +67,7 @@ function PublishingContent() {
   const { data: publishedPosts } = trpc.content.list.useQuery({
     status: "published",
   });
+  const { data: facebookConnections } = trpc.connections.getFacebookConnections.useQuery();
 
   const utils = trpc.useUtils();
 
@@ -161,9 +162,18 @@ function PublishingContent() {
   const markAsPublished = (postId: number, platforms: string[]) => {
     // For now, just schedule to first platform
     const platform = platforms[0] as "facebook" | "instagram" | "tiktok";
+    
+    // Get the first active Facebook connection
+    const connection = facebookConnections?.find((c) => c.isActive);
+    if (!connection) {
+      toast.error("No active Facebook connection found. Please connect a page first.");
+      setLocation("/connections");
+      return;
+    }
+
     publishMutation.mutate({
       postId,
-      connectionId: 1, // TODO: Get from user's connections
+      connectionId: connection.id,
       platform,
       scheduledAt: new Date(),
     });
