@@ -136,8 +136,14 @@ export async function publishToInstagram(
  * 
  * Supports:
  * - Text-only posts
- * - Text + single image (via link parameter)
+ * - Text + single image (via direct binary upload to /{page-id}/photos)
  * - Proper error classification for auth failures and rate limits
+ * 
+ * Image Upload Flow:
+ * 1. If imageUrl provided, fetch image binary from URL
+ * 2. Upload to Facebook using POST /{page-id}/photos with multipart form data
+ * 3. Get photo ID from response
+ * 4. Create feed post with object_attachment pointing to photo ID
  */
 export async function publishToFacebook(
   post: PostContent,
@@ -147,14 +153,28 @@ export async function publishToFacebook(
     const text = buildPostText(post);
     const { accessToken, pageId } = credentials;
 
+    let photoId: string | undefined;
+
+    // Step 1: Upload image if available (direct binary upload)
+    if (post.imageUrl) {
+      try {
+        photoId = await uploadImageToFacebook(post.imageUrl, pageId, accessToken);
+        console.log(`[Facebook] Image uploaded successfully. Photo ID: ${photoId}`);
+      } catch (imgErr: any) {
+        console.warn(`[Facebook] Image upload failed: ${imgErr.message}. Continuing with text-only post.`);
+        // Don't fail the entire post if image upload fails - continue with text-only
+      }
+    }
+
+    // Step 2: Create feed post
     const body: any = {
       message: text,
       access_token: accessToken,
     };
 
-    // Add image if available (Facebook supports via 'link' parameter)
-    if (post.imageUrl) {
-      body.link = post.imageUrl;
+    // If photo was uploaded, attach it to the post
+    if (photoId) {
+      body.object_attachment = photoId;
     }
 
     const res = await fetch(
@@ -189,6 +209,56 @@ export async function publishToFacebook(
   } catch (err: any) {
     return { success: false, errorMessage: err?.message ?? "Unknown Facebook error" };
   }
+}
+
+/**
+ * Upload image binary to Facebook and return photo ID
+ * Uses multipart form data to POST to /{page-id}/photos
+ */
+async function uploadImageToFacebook(
+  imageUrl: string,
+  pageId: string,
+  accessToken: string
+): Promise<string> {
+  // Step 1: Fetch image binary from URL
+  console.log(`[Facebook] Fetching image from: ${imageUrl}`);
+  const imageRes = await fetch(imageUrl);
+  if (!imageRes.ok) {
+    throw new Error(`Failed to fetch image: ${imageRes.status} ${imageRes.statusText}`);
+  }
+
+  const imageBuffer = await imageRes.arrayBuffer();
+  console.log(`[Facebook] Image fetched: ${imageBuffer.byteLength} bytes`);
+
+  // Step 2: Create FormData for multipart upload
+  const formData = new FormData();
+  const blob = new Blob([imageBuffer], { type: imageRes.headers.get('content-type') || 'image/jpeg' });
+  formData.append('source', blob, 'image.jpg');
+  formData.append('access_token', accessToken);
+
+  // Step 3: Upload to Facebook
+  console.log(`[Facebook] Uploading image to /${pageId}/photos`);
+  const uploadRes = await fetch(
+    `https://graph.facebook.com/v21.0/${pageId}/photos`,
+    {
+      method: "POST",
+      body: formData,
+      // Don't set Content-Type header - fetch will set it with boundary automatically
+    }
+  );
+
+  const uploadData = await uploadRes.json() as any;
+  if (!uploadRes.ok || uploadData.error) {
+    throw new Error(
+      uploadData.error?.message ?? `Facebook photo upload error (${uploadRes.status})`
+    );
+  }
+
+  if (!uploadData.id) {
+    throw new Error('No photo ID returned from Facebook');
+  }
+
+  return uploadData.id;
 }
 
 /**
