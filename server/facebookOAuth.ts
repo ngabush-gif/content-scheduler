@@ -53,7 +53,7 @@ export function getFacebookAuthUrl(state: string): string {
 }
 
 /**
- * Exchange authorization code for short-lived user access token
+ * Exchange authorization code for user access token
  */
 export async function exchangeCodeForToken(
   code: string
@@ -72,23 +72,24 @@ export async function exchangeCodeForToken(
   url.searchParams.append("redirect_uri", redirectUri);
   url.searchParams.append("code", code);
 
+  console.log("[Facebook] Exchanging authorization code for access token...");
   const response = await fetch(url.toString(), { method: "GET" });
   const data = await response.json();
 
   if (!response.ok || data.error) {
-    console.error("Facebook token exchange error:", data.error);
+    console.error("[Facebook] Token exchange error:", data.error);
     throw new TRPCError({
       code: "INTERNAL_SERVER_ERROR",
       message: `Failed to exchange code for token: ${data.error?.message || "Unknown error"}`,
     });
   }
 
+  console.log("[Facebook] Successfully exchanged code for access token");
   return data as FacebookTokenResponse;
 }
 
 /**
  * Exchange short-lived token for long-lived token
- * Long-lived tokens last ~60 days and can be refreshed
  */
 export async function exchangeForLongLivedToken(
   shortLivedToken: string
@@ -106,22 +107,32 @@ export async function exchangeForLongLivedToken(
   url.searchParams.append("client_secret", appSecret);
   url.searchParams.append("fb_exchange_token", shortLivedToken);
 
+  console.log("[Facebook] Exchanging short-lived token for long-lived token...");
   const response = await fetch(url.toString(), { method: "GET" });
   const data = await response.json();
 
   if (!response.ok || data.error) {
-    console.error("Facebook long-lived token exchange error:", data.error);
+    console.error("[Facebook] Long-lived token exchange error:", data.error);
     throw new TRPCError({
       code: "INTERNAL_SERVER_ERROR",
       message: `Failed to exchange for long-lived token: ${data.error?.message || "Unknown error"}`,
     });
   }
 
+  console.log("[Facebook] Successfully exchanged for long-lived token");
   return data as FacebookTokenResponse;
 }
 
 /**
- * Fetch user's Facebook pages using long-lived token
+ * Calculate token expiry date
+ */
+export function calculateTokenExpiry(expiresIn?: number): string | null {
+  if (!expiresIn) return null;
+  return new Date(Date.now() + expiresIn * 1000).toISOString();
+}
+
+/**
+ * Fetch user's Facebook pages
  */
 export async function getUserPages(
   accessToken: string
@@ -129,12 +140,16 @@ export async function getUserPages(
   const url = new URL(`${FACEBOOK_GRAPH_URL}/me/accounts`);
   url.searchParams.append("access_token", accessToken);
   url.searchParams.append("limit", "100");
+  url.searchParams.append("fields", "id,name,access_token");
 
+  console.log("[Facebook] Fetching /me/accounts...");
   const response = await fetch(url.toString());
   const data = await response.json();
 
+  console.log("[Facebook] /me/accounts response:", JSON.stringify(data, null, 2));
+
   if (!response.ok || data.error) {
-    console.error("Facebook pages fetch error:", data.error);
+    console.error("[Facebook] Pages fetch error:", data.error);
     throw new TRPCError({
       code: "INTERNAL_SERVER_ERROR",
       message: `Failed to fetch pages: ${data.error?.message || "Unknown error"}`,
@@ -142,38 +157,43 @@ export async function getUserPages(
   }
 
   const pagesData = data as FacebookPagesResponse;
-  return pagesData.data || [];
+  const pages = pagesData.data || [];
+  console.log(`[Facebook] Found ${pages.length} pages:`, pages.map(p => ({ id: p.id, name: p.name })));
+  return pages;
 }
 
 /**
- * Get page access token (for publishing)
- * Page access tokens are long-lived and don't expire
+ * Find a specific page by ID from pages list
  */
-export async function getPageAccessToken(
-  pageId: string,
-  userAccessToken: string
-): Promise<string> {
-  const url = new URL(`${FACEBOOK_GRAPH_URL}/${pageId}`);
-  url.searchParams.append("fields", "access_token");
-  url.searchParams.append("access_token", userAccessToken);
+export function findPageById(
+  pages: FacebookPage[],
+  pageId: string
+): FacebookPage | null {
+  const page = pages.find((p) => p.id === pageId);
+  if (!page) {
+    console.warn(`[Facebook] Page ${pageId} not found in pages list`);
+    return null;
+  }
+  console.log(`[Facebook] Found page ${pageId}: ${page.name}`);
+  return page;
+}
 
-  const response = await fetch(url.toString());
-  const data = await response.json();
-
-  if (!response.ok || data.error) {
-    console.error("Facebook page token fetch error:", data.error);
+/**
+ * Extract page access token from page object
+ */
+export function extractPageAccessToken(page: FacebookPage): string {
+  if (!page.access_token) {
     throw new TRPCError({
       code: "INTERNAL_SERVER_ERROR",
-      message: `Failed to get page token: ${data.error?.message || "Unknown error"}`,
+      message: "Page access token not available",
     });
   }
-
-  return data.access_token;
+  console.log(`[Facebook] Extracted page token for page ${page.id}`);
+  return page.access_token;
 }
 
 /**
  * Verify token is still valid
- * Returns true if token is valid and not expired
  */
 export async function verifyToken(accessToken: string): Promise<boolean> {
   const url = new URL(`${FACEBOOK_GRAPH_URL}/debug_token`);
@@ -192,19 +212,7 @@ export async function verifyToken(accessToken: string): Promise<boolean> {
     const tokenData = data.data;
     return tokenData.is_valid === true && (!tokenData.expires_at || tokenData.expires_at > Math.floor(Date.now() / 1000));
   } catch (error) {
-    console.error("Token verification error:", error);
+    console.error("[Facebook] Token verification error:", error);
     return false;
   }
-}
-
-/**
- * Calculate token expiry date from expires_in seconds
- */
-export function calculateTokenExpiry(expiresInSeconds?: number): string | null {
-  if (!expiresInSeconds) {
-    return null; // No expiry (page access tokens)
-  }
-
-  const expiryDate = new Date(Date.now() + expiresInSeconds * 1000);
-  return expiryDate.toISOString();
 }

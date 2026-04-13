@@ -5,7 +5,8 @@ import {
   exchangeCodeForToken,
   exchangeForLongLivedToken,
   getUserPages,
-  getPageAccessToken,
+  findPageById,
+  extractPageAccessToken,
   verifyToken,
   calculateTokenExpiry,
 } from "./facebookOAuth";
@@ -13,6 +14,8 @@ import { getDb } from "./db";
 import { platformConnections } from "../drizzle/schema";
 import { eq, and } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
+
+const TARGET_PAGE_ID = "838862115974989"; // Time Wealth with Leon Makara
 
 export const connectionsRouter = router({
   /**
@@ -27,7 +30,7 @@ export const connectionsRouter = router({
 
   /**
    * Handle Facebook OAuth callback
-   * Exchange code for long-lived token and save connection
+   * Exchange code for long-lived token, fetch pages, extract page token
    */
   handleFacebookCallback: publicProcedure
     .input(
@@ -35,19 +38,22 @@ export const connectionsRouter = router({
         code: z.string(),
         state: z.string(),
         userId: z.number(),
-        selectedPageId: z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
       try {
+        console.log(`[OAuth] Starting callback for user ${input.userId}`);
+
         // Step 1: Exchange code for short-lived user access token
         const shortLivedTokenResponse = await exchangeCodeForToken(input.code);
         const shortLivedToken = shortLivedTokenResponse.access_token;
+        console.log("[OAuth] Received short-lived token");
 
-        // Step 2: Exchange short-lived token for long-lived token (lasts ~60 days)
+        // Step 2: Exchange short-lived token for long-lived token (60 days)
         const longLivedTokenResponse = await exchangeForLongLivedToken(shortLivedToken);
         const userAccessToken = longLivedTokenResponse.access_token;
         const userTokenExpiry = calculateTokenExpiry(longLivedTokenResponse.expires_in);
+        console.log("[OAuth] Exchanged for long-lived user token, expires at:", userTokenExpiry);
 
         // Step 3: Fetch user's pages using long-lived token
         const pages = await getUserPages(userAccessToken);
@@ -59,27 +65,26 @@ export const connectionsRouter = router({
           });
         }
 
-        // Step 4: If user selected a specific page, use that; otherwise use first page
-        const selectedPage = input.selectedPageId
-          ? pages.find((p) => p.id === input.selectedPageId)
-          : pages[0];
+        // Step 4: Find the target page (Time Wealth with Leon Makara)
+        const targetPage = findPageById(pages, TARGET_PAGE_ID);
 
-        if (!selectedPage) {
+        if (!targetPage) {
+          console.error(`[OAuth] Target page ${TARGET_PAGE_ID} not found in user's pages`);
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: "Selected page not found",
+            message: `Page ${TARGET_PAGE_ID} not found. You must have admin access to "Time Wealth with Leon Makara" page.`,
           });
         }
 
-        // Step 5: Get page access token (page tokens don't expire)
-        const pageAccessToken = await getPageAccessToken(
-          selectedPage.id,
-          userAccessToken
-        );
+        // Step 5: Extract page access token (already included in /me/accounts response)
+        const pageAccessToken = extractPageAccessToken(targetPage);
+        console.log(`[OAuth] Extracted page token for page ${TARGET_PAGE_ID}`);
 
         // Step 6: Save connection to database
         const db = await getDb();
         if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
+
+        console.log(`[OAuth] Checking for existing connection for user ${input.userId}`);
 
         // Check if connection already exists
         const existingConnection = await db
@@ -89,7 +94,7 @@ export const connectionsRouter = router({
             and(
               eq(platformConnections.userId, input.userId),
               eq(platformConnections.platform, "facebook"),
-              eq(platformConnections.accountId, selectedPage.id)
+              eq(platformConnections.accountId, TARGET_PAGE_ID)
             )
           )
           .limit(1);
@@ -97,24 +102,27 @@ export const connectionsRouter = router({
         let connectionId: number;
 
         if (existingConnection.length > 0) {
-          // Update existing connection with new page token
+          console.log(`[OAuth] Updating existing connection ${existingConnection[0].id}`);
+          // Update existing connection with new tokens
           await db
             .update(platformConnections)
             .set({
               accessToken: pageAccessToken,
               expiresAt: userTokenExpiry,
+              isActive: 1,
               updatedAt: new Date().toISOString(),
             })
             .where(eq(platformConnections.id, existingConnection[0].id));
 
           connectionId = existingConnection[0].id;
         } else {
+          console.log(`[OAuth] Creating new connection for user ${input.userId}`);
           // Create new connection with page token
           const result = await db.insert(platformConnections).values({
             userId: input.userId,
             platform: "facebook",
-            accountName: selectedPage.name,
-            accountId: selectedPage.id,
+            accountName: targetPage.name,
+            accountId: TARGET_PAGE_ID,
             accessToken: pageAccessToken,
             isActive: 1,
             connectedAt: new Date().toISOString(),
@@ -123,17 +131,20 @@ export const connectionsRouter = router({
           });
 
           connectionId = result[0].insertId;
+          console.log(`[OAuth] Created new connection ${connectionId}`);
         }
+
+        console.log(`[OAuth] Successfully saved connection ${connectionId} with page token`);
 
         return {
           success: true,
           connectionId,
-          pageName: selectedPage.name,
-          pageId: selectedPage.id,
-          message: `Successfully connected to Facebook page: ${selectedPage.name}`,
+          pageName: targetPage.name,
+          pageId: TARGET_PAGE_ID,
+          message: `Successfully connected to Facebook page: ${targetPage.name}`,
         };
       } catch (error) {
-        console.error("Facebook callback error:", error);
+        console.error("[OAuth] Facebook callback error:", error);
         throw error;
       }
     }),
@@ -159,6 +170,7 @@ export const connectionsRouter = router({
     const verificationsPromises = connections.map(async (conn: any) => {
       const isValid = await verifyToken(conn.accessToken);
       if (!isValid && conn.isActive && db) {
+        console.log(`[Connections] Marking connection ${conn.id} as inactive (token invalid)`);
         await db
           .update(platformConnections)
           .set({ isActive: 0 })
