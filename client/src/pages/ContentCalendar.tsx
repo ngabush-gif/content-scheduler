@@ -112,12 +112,20 @@ function CalendarContent() {
       toast.error("Please select a platform connection");
       return;
     }
+    
+    // Convert local datetime-local input to UTC
+    // datetime-local returns "2026-04-14T08:00" in user's local time
+    // We need to convert this to UTC for storage
+    const localDate = new Date(selectedDateTime);
+    // Adjust for timezone offset: subtract the offset to get UTC time
+    const utcDate = new Date(localDate.getTime() - localDate.getTimezoneOffset() * 60000);
+    
     scheduleMutation.mutate({
       postId: scheduleModal.post.id,
       connectionId: selectedConnectionId,
       pageId: selectedPageId || undefined,
       platform: selectedPlatform,
-      scheduledAt: new Date(selectedDateTime),
+      scheduledAt: utcDate,
     });
   };
 
