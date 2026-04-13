@@ -334,6 +334,26 @@ function CalendarContent() {
               )}
             </div>
             <div>
+              <label className="text-xs text-muted-foreground mb-1.5 block">Platform</label>
+              <div className="flex gap-2">
+                {["facebook", "instagram", "tiktok"].map((platform) => (
+                  <button
+                    key={platform}
+                    onClick={() => setSelectedPlatform(platform as "facebook" | "instagram" | "tiktok")}
+                    className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-all ${
+                      selectedPlatform === platform
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border/50 bg-input text-muted-foreground hover:border-border"
+                    }`}
+                  >
+                    {platform === "facebook" && "📘 Facebook"}
+                    {platform === "instagram" && "📷 Instagram"}
+                    {platform === "tiktok" && "🎵 TikTok"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
               <label className="text-xs text-muted-foreground mb-1.5 block">Date & Time</label>
               <input
                 type="datetime-local"
