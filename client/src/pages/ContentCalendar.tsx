@@ -84,13 +84,24 @@ function CalendarContent() {
   const getScheduledForDay = (day: number) => {
     if (!scheduled) return [];
     return scheduled.filter((s: any) => {
+      // Parse the ISO string and get local date components
+      // The scheduledAt is stored in UTC, but we need to compare against local calendar
       const d = new Date(s.scheduledAt);
-      return d.getFullYear() === year && d.getMonth() === month && d.getDate() === day;
+      const localYear = d.getFullYear();
+      const localMonth = d.getMonth();
+      const localDay = d.getDate();
+      return localYear === year && localMonth === month && localDay === day;
     });
   };
 
   const monthNames = ["January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"];
+  
+  // Helper to format date for display
+  const formatScheduleTime = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return d.toLocaleString();
+  };
 
   const handleSchedule = () => {
     if (!scheduleModal?.post || !selectedDateTime) {
@@ -220,12 +231,12 @@ function CalendarContent() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {(scheduled ?? []).filter((s: any) => s.status === "pending").length === 0 ? (
+          {(scheduled ?? []).filter((s: any) => s.status === "scheduled" || s.status === "publishing").length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">No scheduled posts this month</p>
           ) : (
             <div className="space-y-2">
               {(scheduled ?? [])
-                .filter((s: any) => s.status === "pending")
+                .filter((s: any) => s.status === "scheduled" || s.status === "publishing")
                 .sort((a: any, b: any) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
                 .map((s: any) => {
                   const post = approvedPosts?.find((p: any) => p.id === s.postId);
