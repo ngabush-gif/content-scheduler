@@ -9,6 +9,7 @@ import {
   Calendar, ChevronLeft, ChevronRight, Clock, Plus, Trash2, Loader2,
 } from "lucide-react";
 import { useState } from "react";
+import * as React from "react";
 import { toast } from "sonner";
 
 export default function ContentCalendar() {
@@ -27,8 +28,19 @@ function CalendarContent() {
   const [selectedConnectionId, setSelectedConnectionId] = useState<number | null>(null);
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
 
-  // TODO: Get user's platform connections
-  // const { data: connections } = trpc.connections.list.useQuery();
+  // Get user's platform connections
+  const { data: connections } = trpc.connections.getFacebookConnections.useQuery();
+  
+  // Auto-select first active connection if available
+  React.useEffect(() => {
+    if (connections && connections.length > 0 && !selectedConnectionId) {
+      const activeConnection = connections.find((c) => c.isActive);
+      if (activeConnection) {
+        setSelectedConnectionId(activeConnection.id);
+        setSelectedPageId(activeConnection.pageId);
+      }
+    }
+  }, [connections, selectedConnectionId]);
 
   const utils = trpc.useUtils();
 
@@ -274,22 +286,33 @@ function CalendarContent() {
               </select>
             </div>
             <div>
-              <label className="text-xs text-muted-foreground mb-1.5 block">Platform</label>
-              <div className="flex gap-2">
-                {PLATFORMS.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => setSelectedPlatform(p.id as any)}
-                    className={`flex-1 py-2 rounded-lg border text-xs font-medium transition-all ${
-                      selectedPlatform === p.id
-                        ? "border-primary/40 bg-primary/8 text-primary"
-                        : "border-border/40 text-muted-foreground hover:border-border"
-                    }`}
-                  >
-                    {p.id === "facebook" ? "📘" : p.id === "instagram" ? "📸" : "🎵"} {p.label}
-                  </button>
-                ))}
-              </div>
+              <label className="text-xs text-muted-foreground mb-1.5 block">Platform Connection</label>
+              {connections && connections.length > 0 ? (
+                <select
+                  className="w-full px-3 py-2 rounded-lg border border-border/50 bg-input text-sm text-foreground"
+                  value={selectedConnectionId || ""}
+                  onChange={(e) => {
+                    const connId = Number(e.target.value);
+                    const conn = connections.find((c) => c.id === connId);
+                    if (conn) {
+                      setSelectedConnectionId(connId);
+                      setSelectedPageId(conn.pageId);
+                      setSelectedPlatform("facebook");
+                    }
+                  }}
+                >
+                  <option value="" disabled>Select a page...</option>
+                  {connections.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      📘 {c.pageName || c.pageId} {!c.isActive ? "(Inactive)" : ""}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className="w-full px-3 py-2 rounded-lg border border-border/50 bg-input text-sm text-muted-foreground">
+                  No connections found. <a href="/connections" className="text-primary underline">Connect a page</a>
+                </div>
+              )}
             </div>
             <div>
               <label className="text-xs text-muted-foreground mb-1.5 block">Date & Time</label>
