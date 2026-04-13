@@ -130,7 +130,7 @@ export const appRouter = router({
         const dbData = {
           ...input,
           authorId: ctx.user.id,
-          status: "draft" as const,
+          status: "approved" as const,
           aiGeneratedImage: input.aiGeneratedImage ? 1 : (input.aiGeneratedImage === false ? 0 : undefined),
         };
         const result = await createContentPost(dbData);
@@ -938,7 +938,7 @@ Generate post #${i + 1}. Return JSON with: {"caption": "...", "hashtags": "#tag1
             script: content.script,
             ideas: content.ideas,
             tone: input.tone,
-            status: "draft",
+            status: "approved",
           });
           posts.push(post);
         }
