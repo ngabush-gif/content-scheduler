@@ -250,13 +250,20 @@ function CalendarContent() {
                   const post = approvedPosts?.find((p: any) => p.id === s.postId);
                   return (
                     <div key={s.id} className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-accent/30 transition-colors">
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
                         <div className={`w-2 h-2 rounded-full shrink-0 ${
                           s.platform === "facebook" ? "bg-blue-400" :
                           s.platform === "instagram" ? "bg-pink-400" : "bg-cyan-400"
                         }`} />
-                        <div>
-                          <p className="text-sm font-medium">{post?.title ?? `Post #${s.postId}`}</p>
+                        {post?.imageUrl && (
+                          <img
+                            src={post.imageUrl}
+                            alt={post?.title}
+                            className="w-12 h-12 rounded object-cover shrink-0"
+                          />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate">{post?.title ?? `Post #${s.postId}`}</p>
                           <p className="text-xs text-muted-foreground">
                             {s.platform} · {new Date(s.scheduledAt).toLocaleString()}
                           </p>
