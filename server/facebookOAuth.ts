@@ -163,6 +163,37 @@ export async function getUserPages(
 }
 
 /**
+ * Fetch a specific page's access token directly
+ * Used when /me/accounts doesn't return the page but user has admin access
+ */
+export async function getPageAccessToken(
+  pageId: string,
+  userAccessToken: string
+): Promise<FacebookPage | null> {
+  const url = new URL(`${FACEBOOK_GRAPH_URL}/${pageId}`);
+  url.searchParams.append("fields", "id,name,access_token");
+  url.searchParams.append("access_token", userAccessToken);
+
+  console.log(`[Facebook] Fetching page token directly for page ${pageId}...`);
+  const response = await fetch(url.toString());
+  const data = await response.json();
+
+  if (!response.ok || data.error) {
+    console.error(`[Facebook] Failed to fetch page token for ${pageId}:`, data.error);
+    return null;
+  }
+
+  const page = data as FacebookPage;
+  if (!page.access_token) {
+    console.warn(`[Facebook] Page ${pageId} has no access_token in response`);
+    return null;
+  }
+
+  console.log(`[Facebook] Successfully fetched page token for ${pageId}: ${page.name}`);
+  return page;
+}
+
+/**
  * Find a specific page by ID from pages list
  */
 export function findPageById(

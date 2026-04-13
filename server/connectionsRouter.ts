@@ -9,6 +9,7 @@ import {
   extractPageAccessToken,
   verifyToken,
   calculateTokenExpiry,
+  getPageAccessToken,
 } from "./facebookOAuth";
 import { getDb } from "./db";
 import { platformConnections } from "../drizzle/schema";
@@ -58,18 +59,18 @@ export const connectionsRouter = router({
         // Step 3: Fetch user's pages using long-lived token
         const pages = await getUserPages(userAccessToken);
 
-        if (!pages.length) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "No Facebook pages found. Please ensure you have admin access to at least one page.",
-          });
+        // Step 4: Find the target page (Time Wealth with Leon Makara)
+        let targetPage = findPageById(pages, TARGET_PAGE_ID);
+
+        // Step 4b: If not found in /me/accounts, try fetching directly
+        // (some page configurations don't return in /me/accounts but are still accessible)
+        if (!targetPage) {
+          console.log(`[OAuth] Page ${TARGET_PAGE_ID} not in /me/accounts, trying direct fetch...`);
+          targetPage = await getPageAccessToken(TARGET_PAGE_ID, userAccessToken);
         }
 
-        // Step 4: Find the target page (Time Wealth with Leon Makara)
-        const targetPage = findPageById(pages, TARGET_PAGE_ID);
-
         if (!targetPage) {
-          console.error(`[OAuth] Target page ${TARGET_PAGE_ID} not found in user's pages`);
+          console.error(`[OAuth] Target page ${TARGET_PAGE_ID} not found`);
           throw new TRPCError({
             code: "BAD_REQUEST",
             message: `Page ${TARGET_PAGE_ID} not found. You must have admin access to "Time Wealth with Leon Makara" page.`,
