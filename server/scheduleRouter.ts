@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { DateTime } from "luxon";
 import { protectedProcedure, router } from "./_core/trpc";
 import {
   createScheduledPost,
@@ -39,6 +40,8 @@ export const scheduleRouter = router({
         pageId: z.string().optional(),
         platform: z.enum(["facebook", "instagram", "tiktok"]),
         scheduledAt: z.date(),
+        timezoneOffsetMinutes: z.number().optional().default(0),
+        timezoneName: z.string().optional().default("Australia/Brisbane"), // IANA timezone name
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -91,6 +94,7 @@ export const scheduleRouter = router({
         platform: input.platform,
         pageId: input.pageId,
         scheduledAt: scheduledAtISO,
+        timezoneOffsetMinutes: input.timezoneOffsetMinutes || 0,
         status: "scheduled",
         retryCount: 0,
         createdAt: new Date().toISOString(),

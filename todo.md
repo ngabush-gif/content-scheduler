@@ -127,10 +127,15 @@
 - [ ] Add logging for job execution
 
 ### Phase 3: Provider Publishing Functions
-- [ ] Update `publishToFacebookPage()` to support images
-- [ ] Implement `publishToInstagram()`
-- [ ] Implement `publishToTikTok()`
-- [ ] Add error handling for each provider
+- [x] Update `publishToFacebookPage()` to support direct binary image upload (Option B)
+- [x] Implement image fetch from URL (S3, CDN, Manus API)
+- [x] Implement multipart form data upload to Facebook's /{page-id}/photos endpoint
+- [x] Implement object_attachment parameter for feed post creation
+- [x] Add graceful fallback: if image upload fails, post still publishes with text only
+- [x] Add comprehensive error handling and logging
+- [x] Create 9 unit and E2E tests for Facebook image upload feature - all passing (platformPublisher.test.ts + e2e-image-publishing.test.ts)
+- [ ] Implement `publishToInstagram()` with image support
+- [ ] Implement `publishToTikTok()` with video support
 - [ ] Test with real API credentials
 
 ### Phase 4: tRPC Endpoints

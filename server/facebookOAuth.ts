@@ -247,3 +247,29 @@ export async function verifyToken(accessToken: string): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Refresh Facebook token by re-fetching pages
+ * This gets a fresh page access token from Facebook
+ */
+export async function refreshPageToken(
+  userAccessToken: string,
+  pageId: string
+): Promise<string | null> {
+  try {
+    console.log(`[Facebook] Attempting to refresh token for page ${pageId}...`);
+    
+    // Try to get fresh page token
+    const page = await getPageAccessToken(pageId, userAccessToken);
+    if (page && page.access_token) {
+      console.log(`[Facebook] Successfully refreshed token for page ${pageId}`);
+      return page.access_token;
+    }
+    
+    console.warn(`[Facebook] Could not refresh token for page ${pageId}`);
+    return null;
+  } catch (error) {
+    console.error(`[Facebook] Error refreshing token for page ${pageId}:`, error);
+    return null;
+  }
+}

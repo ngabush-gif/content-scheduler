@@ -122,6 +122,7 @@ export const scheduledPosts = mysqlTable("scheduled_posts", {
 	scheduledById: int().notNull(),
 	platform: mysqlEnum(['facebook','instagram','tiktok']).notNull(),
 	scheduledAt: timestamp({ mode: 'string' }).notNull(),
+	timezoneOffsetMinutes: int().default(0).notNull(),
 	status: mysqlEnum(['scheduled','publishing','published','failed','cancelled','reconnect_required']).default('scheduled').notNull(),
 	publishedAt: timestamp({ mode: 'string' }),
 	errorMessage: text(),

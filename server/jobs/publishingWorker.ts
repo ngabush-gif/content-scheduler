@@ -2,6 +2,7 @@ import { getDb } from "../db";
 import { scheduledPosts, publishingJobs, contentPosts, platformConnections } from "../../drizzle/schema";
 import { eq, and, lte, or, isNull } from "drizzle-orm";
 import { publishToFacebookPage } from "../platformPublisher";
+import { refreshPageToken } from "../facebookOAuth";
 
 /**
  * Publishing Worker: Atomic Job Claiming with Database Locking
@@ -59,16 +60,53 @@ async function claimScheduledPost(): Promise<PublishingContext | null> {
     if (!db) return null;
     const result = await db.transaction(async (tx) => {
       // Find ONE post ready to publish (status = scheduled, scheduledAt <= now, not in retry window)
-      const readyPosts = await tx.select().from(scheduledPosts).where(and(
-        eq(scheduledPosts.status, "scheduled"),
-        lte(scheduledPosts.scheduledAt, new Date().toISOString()),
-        or(
-          isNull(scheduledPosts.nextRetryAt),
-          lte(scheduledPosts.nextRetryAt, new Date().toISOString())
-        )
-      )).limit(1);
+      const now = new Date();
+      const nowISO = now.toISOString();
+      const bufferTime = new Date(now.getTime() + 15 * 60 * 1000).toISOString();
+      
+      // Helper: Convert EDT stored time to UTC
+      const convertStoredTimeToUTC = (storedTimeStr: string): string => {
+        const date = new Date(storedTimeStr);
+        const utcDate = new Date(date.getTime() + 4 * 60 * 60 * 1000);
+        return utcDate.toISOString();
+      };
+      
+      console.log(`[PW] Checking posts at ${nowISO} (with 15min buffer)`);
+      
+      // Get all scheduled posts and filter in JavaScript
+      const allScheduledPosts = await tx.select().from(scheduledPosts).where(
+        eq(scheduledPosts.status, "scheduled")
+      ).limit(10);
+      
+      // Convert stored times to UTC using timezone offset
+      const readyPosts = allScheduledPosts.filter(p => {
+        const storedDate = new Date(p.scheduledAt);
+        let offsetMinutes = p.timezoneOffsetMinutes || 0;
+        if (offsetMinutes === 0) {
+          offsetMinutes = -600;
+          console.log(`[PW] Post ${p.id}: Offset was 0 (mobile bug), using AEST default (-600min)`);
+        }
+        const utcTime = new Date(storedDate.getTime() + offsetMinutes * 60 * 1000).toISOString();
+        const isReady = utcTime <= bufferTime && (p.nextRetryAt === null || p.nextRetryAt <= nowISO);
+        console.log(`[PW] Post ${p.id}: Offset=${offsetMinutes}min, Stored=${p.scheduledAt}, UTC=${utcTime}, Ready=${isReady}`);
+        return isReady;
+      }).slice(0, 1);
 
       if (!readyPosts.length) {
+        const upcoming = await tx.select().from(scheduledPosts).where(
+          eq(scheduledPosts.status, "scheduled")
+        ).limit(1);
+        if (upcoming.length > 0) {
+          const p = upcoming[0];
+          const storedTime = new Date(p.scheduledAt);
+          const diff = storedTime.getTime() - now.getTime();
+          console.log(`[PW] Next post ID ${p.id}:`);
+          console.log(`[PW]   Stored: ${p.scheduledAt}`);
+          console.log(`[PW]   Parsed as: ${storedTime.toISOString()}`);
+          console.log(`[PW]   Current UTC: ${nowISO}`);
+          console.log(`[PW]   Difference: ${Math.round(diff/1000)}s away`);
+          console.log(`[PW]   Buffer time: ${bufferTime}`);
+        }
         return null;
       }
 
@@ -200,12 +238,30 @@ async function publishScheduledPost(context: PublishingContext): Promise<void> {
       throw new Error("No access token found for connection");
     }
 
+    // Step 2.5: Refresh token if needed (for Facebook)
+    let accessToken = connection.accessToken;
+    if (context.platform === "facebook" && context.pageId) {
+      console.log(`[PublishingWorker] Attempting to refresh Facebook token for page ${context.pageId}...`);
+      const refreshedToken = await refreshPageToken(accessToken, context.pageId);
+      if (refreshedToken) {
+        console.log(`[PublishingWorker] Successfully refreshed Facebook token`);
+        accessToken = refreshedToken;
+        // Update the connection with the new token
+        await db
+          .update(platformConnections)
+          .set({ accessToken: refreshedToken, updatedAt: new Date().toISOString() })
+          .where(eq(platformConnections.id, context.connectionId));
+      } else {
+        console.warn(`[PublishingWorker] Failed to refresh token, will try with existing token`);
+      }
+    }
+
     // Step 3: Publish to platform
     let result: PublishResult;
 
     if (context.platform === "facebook") {
       result = await publishToFacebookPage(post, {
-        accessToken: connection.accessToken,
+        accessToken: accessToken,
         pageId: context.pageId || connection.accountId || "",
       });
     } else if (context.platform === "instagram") {

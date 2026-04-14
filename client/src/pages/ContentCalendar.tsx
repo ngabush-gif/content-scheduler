@@ -27,6 +27,7 @@ function CalendarContent() {
   const [selectedDateTime, setSelectedDateTime] = useState("");
   const [selectedConnectionId, setSelectedConnectionId] = useState<number | null>(null);
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
+  const [selectedTimezone, setSelectedTimezone] = useState("AEST"); // Default to AEST for Australian users
 
   // Get user's platform connections
   const { data: connections } = trpc.connections.getFacebookConnections.useQuery();
@@ -113,12 +114,22 @@ function CalendarContent() {
       return;
     }
     
-    // Convert local datetime-local input to UTC
-    // datetime-local returns "2026-04-14T08:00" in user's local time
-    // We need to convert this to UTC for storage
+    // Map timezone names to offsets
+    const timezoneOffsets: Record<string, number> = {
+      'AEST': -600,
+      'AEDT': -660,
+      'ACST': -570,
+      'ACDT': -630,
+      'AWST': -480,
+      'UTC': 0,
+    };
+    
+    const timezoneOffsetMinutes = timezoneOffsets[selectedTimezone] || 0;
     const localDate = new Date(selectedDateTime);
-    // Adjust for timezone offset: subtract the offset to get UTC time
-    const utcDate = new Date(localDate.getTime() - localDate.getTimezoneOffset() * 60000);
+    
+    const utcDate = new Date(localDate.getTime() - (timezoneOffsetMinutes * 60 * 1000));
+    
+    console.log(`[Schedule] Local: ${selectedDateTime}, TZ: ${selectedTimezone}, Offset: ${timezoneOffsetMinutes}min, UTC: ${utcDate.toISOString()}`);
     
     scheduleMutation.mutate({
       postId: scheduleModal.post.id,
@@ -126,6 +137,7 @@ function CalendarContent() {
       pageId: selectedPageId || undefined,
       platform: selectedPlatform,
       scheduledAt: utcDate,
+      timezoneOffsetMinutes: 0,
     });
   };
 
@@ -285,11 +297,11 @@ function CalendarContent() {
 
       {/* Schedule Modal */}
       <Dialog open={!!scheduleModal} onOpenChange={() => setScheduleModal(null)}>
-        <DialogContent className="max-w-md bg-card border-border">
+        <DialogContent className="max-w-md bg-card border-border max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="font-display">Schedule a Post</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 pr-4">
             <div>
               <label className="text-xs text-muted-foreground mb-1.5 block">Select Approved Post</label>
               <select
@@ -359,6 +371,21 @@ function CalendarContent() {
                   </button>
                 ))}
               </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1.5 block">Timezone</label>
+              <select
+                value={selectedTimezone}
+                onChange={(e) => setSelectedTimezone(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-border/50 bg-input text-sm text-foreground"
+              >
+                <option value="AEST">AEST (UTC+10) - Australia Eastern</option>
+                <option value="AEDT">AEDT (UTC+11) - Australia Eastern Daylight</option>
+                <option value="ACST">ACST (UTC+9:30) - Australia Central</option>
+                <option value="ACDT">ACDT (UTC+10:30) - Australia Central Daylight</option>
+                <option value="AWST">AWST (UTC+8) - Australia Western</option>
+                <option value="UTC">UTC (UTC+0) - Coordinated Universal Time</option>
+              </select>
             </div>
             <div>
               <label className="text-xs text-muted-foreground mb-1.5 block">Date & Time</label>
