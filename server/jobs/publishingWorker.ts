@@ -78,17 +78,13 @@ async function claimScheduledPost(): Promise<PublishingContext | null> {
         eq(scheduledPosts.status, "scheduled")
       ).limit(10);
       
-      // Convert stored times to UTC using timezone offset
+      // Frontend already converted to UTC, so stored time is UTC
+      // Just compare directly without applying offset again
       const readyPosts = allScheduledPosts.filter(p => {
         const storedDate = new Date(p.scheduledAt);
-        let offsetMinutes = p.timezoneOffsetMinutes || 0;
-        if (offsetMinutes === 0) {
-          offsetMinutes = -600;
-          console.log(`[PW] Post ${p.id}: Offset was 0 (mobile bug), using AEST default (-600min)`);
-        }
-        const utcTime = new Date(storedDate.getTime() + offsetMinutes * 60 * 1000).toISOString();
+        const utcTime = storedDate.toISOString();
         const isReady = utcTime <= bufferTime && (p.nextRetryAt === null || p.nextRetryAt <= nowISO);
-        console.log(`[PW] Post ${p.id}: Offset=${offsetMinutes}min, Stored=${p.scheduledAt}, UTC=${utcTime}, Ready=${isReady}`);
+        console.log(`[PW] Post ${p.id}: Stored=${p.scheduledAt}, UTC=${utcTime}, Ready=${isReady}`);
         return isReady;
       }).slice(0, 1);
 
