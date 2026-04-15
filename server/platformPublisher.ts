@@ -166,15 +166,19 @@ export async function publishToFacebook(
       }
     }
 
-    // Step 2: Create feed post
+    // Step 2: Create feed post with message only
+    // NOTE: Do NOT use object_attachment as it creates a share/wrapper post
+    // Instead, the uploaded photo will automatically appear as the post's image
+    // when we reference it via attached_media parameter
     const body: any = {
       message: text,
       access_token: accessToken,
     };
 
-    // If photo was uploaded, attach it to the post
+    // If photo was uploaded, reference it as attached media
+    // This creates a native post with the image, not a share wrapper
     if (photoId) {
-      body.object_attachment = photoId;
+      body.attached_media = [{ media_fbid: photoId }];
     }
 
     const res = await fetch(

@@ -149,6 +149,8 @@
 ### Phase 3: Provider Publishing Functions
 - [x] Update `publishToFacebookPage()` to support direct binary image upload (Option B)
 - [x] Implement image fetch from URL (S3, CDN, Manus API)
+- [x] FIX: Replace object_attachment with attached_media to prevent share/wrapper posts
+- [x] Ensure native page posts with proper insights (not share-style wrappers)
 - [x] Implement multipart form data upload to Facebook's /{page-id}/photos endpoint
 - [x] Implement object_attachment parameter for feed post creation
 - [x] Add graceful fallback: if image upload fails, post still publishes with text only
