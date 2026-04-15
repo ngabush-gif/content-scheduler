@@ -688,27 +688,15 @@ Return JSON with:
           throw new TRPCError({ code: "BAD_REQUEST", message: "Only approved posts can be scheduled" });
         }
 
-        // Validation removed - publishing worker handles timing
-
-        // TIMEZONE CORRECTION: Check if time needs correction
-        let scheduledAtISO = input.scheduledAt.toISOString();
-        const scheduledDate = new Date(scheduledAtISO);
+        // Frontend already converted to UTC, use as-is
+        const scheduledAtISO = input.scheduledAt.toISOString();
         const now = new Date();
-        const minutesUntilScheduled = (scheduledDate.getTime() - now.getTime()) / (1000 * 60);
         
-        console.log(`[publish.schedule] minutesUntilScheduled=${minutesUntilScheduled.toFixed(1)}, scheduledAt=${scheduledAtISO}`);
-        
-        // If 10-24 hours away: already correct (frontend converted it)
-        // If less than 10 hours or more than 24 hours: needs correction
-        if (minutesUntilScheduled < 600 || minutesUntilScheduled > 1440) {
-          console.log(`[publish.schedule] APPLYING CORRECTION`);
-          // Needs correction: subtract 10 hours
-          const correctedDate = new Date(scheduledDate.getTime() - (10 * 60 * 60 * 1000));
-          scheduledAtISO = correctedDate.toISOString();
-          console.log(`[publish.schedule] After correction: ${scheduledAtISO}`);
-        } else {
-          console.log(`[publish.schedule] NO CORRECTION NEEDED`);
-        }
+        console.log('[publish.schedule] Received:', {
+          scheduledAt: scheduledAtISO,
+          now: now.toISOString(),
+          diffMs: input.scheduledAt.getTime() - now.getTime(),
+        });
 
         // Create scheduled posts for each platform
         for (const platform of input.platforms) {

@@ -1,4 +1,3 @@
-import DashboardLayout from "@/components/DashboardLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +10,8 @@ import {
 import { useState } from "react";
 import * as React from "react";
 import { toast } from "sonner";
+import { DateTime } from "luxon";
+import DashboardLayout from "@/components/DashboardLayout";
 
 export default function ContentCalendar() {
   return (
@@ -27,12 +28,11 @@ function CalendarContent() {
   const [selectedDateTime, setSelectedDateTime] = useState("");
   const [selectedConnectionId, setSelectedConnectionId] = useState<number | null>(null);
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
-  const [selectedTimezone, setSelectedTimezone] = useState("AEST"); // Default to AEST for Australian users
+  const [selectedTimezone, setSelectedTimezone] = useState("AEST");
 
   // Get user's platform connections
   const { data: connections } = trpc.connections.getFacebookConnections.useQuery();
   
-  // Auto-select first active connection if available
   React.useEffect(() => {
     if (connections && connections.length > 0 && !selectedConnectionId) {
       const activeConnection = connections.find((c) => c.isActive);
@@ -48,61 +48,29 @@ function CalendarContent() {
   // Get month range
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
-  const firstDay = new Date(year, month, 1);
-  const lastDay = new Date(year, month + 1, 0);
 
-  const { data: scheduled } = trpc.schedule.list.useQuery({});
+  // Get scheduled posts
+  const { data: scheduledPosts = [] } = trpc.schedule.list.useQuery();
+  const { data: approvedPosts = [] } = trpc.content.list.useQuery({ status: 'approved' });
 
-  const { data: approvedPosts } = trpc.content.list.useQuery({ status: "approved" });
-
+  // Mutations
   const scheduleMutation = trpc.schedule.create.useMutation({
     onSuccess: () => {
-      utils.schedule.list.invalidate();
-      toast.success("Post scheduled!");
+      toast.success("Post scheduled successfully!");
       setScheduleModal(null);
-    },
-    onError: (e) => toast.error(e.message),
-  });
-
-  const cancelMutation = trpc.schedule.cancel.useMutation({
-    onSuccess: () => {
+      setSelectedDateTime("");
       utils.schedule.list.invalidate();
-      toast.success("Schedule cancelled");
     },
     onError: (e) => toast.error(e.message),
   });
 
-  // Build calendar grid
-  const startDow = firstDay.getDay(); // 0=Sun
-  const daysInMonth = lastDay.getDate();
-  const cells: (number | null)[] = [
-    ...Array(startDow).fill(null),
-    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
-  ];
-  // Pad to complete last row
-  while (cells.length % 7 !== 0) cells.push(null);
-
-  const getScheduledForDay = (day: number) => {
-    if (!scheduled) return [];
-    return scheduled.filter((s: any) => {
-      // Parse the ISO string and get local date components
-      // The scheduledAt is stored in UTC, but we need to compare against local calendar
-      const d = new Date(s.scheduledAt);
-      const localYear = d.getFullYear();
-      const localMonth = d.getMonth();
-      const localDay = d.getDate();
-      return localYear === year && localMonth === month && localDay === day;
-    });
-  };
-
-  const monthNames = ["January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"];
-  
-  // Helper to format date for display
-  const formatScheduleTime = (dateStr: string) => {
-    const d = new Date(dateStr);
-    return d.toLocaleString();
-  };
+  const deleteMutation = trpc.schedule.cancel.useMutation({
+    onSuccess: () => {
+      toast.success("Scheduled post cancelled");
+      utils.schedule.list.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   const handleSchedule = () => {
     if (!scheduleModal?.post || !selectedDateTime) {
@@ -114,323 +82,237 @@ function CalendarContent() {
       return;
     }
     
-    // Map timezone names to UTC offsets (positive = ahead of UTC)
-    const timezoneOffsets: Record<string, number> = {
-      'AEST': 10,    // UTC+10
-      'AEDT': 11,    // UTC+11
-      'ACST': 9.5,   // UTC+9:30
-      'ACDT': 10.5,  // UTC+10:30
-      'AWST': 8,     // UTC+8
-      'UTC': 0,      // UTC+0
+    // Map timezone names to Luxon zone identifiers
+    const timezoneMap: Record<string, string> = {
+      'AEST': 'Australia/Brisbane',
+      'AEDT': 'Australia/Brisbane',
+      'ACST': 'Australia/Adelaide',
+      'ACDT': 'Australia/Adelaide',
+      'AWST': 'Australia/Perth',
+      'UTC': 'UTC',
     };
     
-    const timezoneOffsetHours = timezoneOffsets[selectedTimezone] || 0;
+    const luxonZone = timezoneMap[selectedTimezone] || 'Australia/Brisbane';
     
-    // Convert local time to UTC
-    // datetime-local input returns a string like "2026-04-16T06:20"
-    // When parsed as Date, JS treats it as UTC, not local time
-    // Example: User selects 06:20 AEST (UTC+10)
-    // - datetime-local gives: "2026-04-16T06:20"
-    // - new Date treats as UTC: 2026-04-16T06:20:00.000Z
-    // - We want UTC time: 2026-04-15T20:20:00.000Z (subtract 10 hours)
-    // - So: 06:20 - 10 hours = 20:20 previous day UTC
-    const localDate = new Date(selectedDateTime);
-    const utcDate = new Date(localDate.getTime() - (timezoneOffsetHours * 60 * 60 * 1000));
-    const now = new Date();
+    // Get current time in UTC and selected timezone
+    const nowUTC = DateTime.now().toUTC();
+    const nowLocal = DateTime.now().setZone(luxonZone);
     
-    // Client-side validation to match backend
-    if (utcDate <= now) {
-      console.error('[handleSchedule] VALIDATION FAILED: Time is not in the future');
-      console.error('[handleSchedule] Details:', {
-        selectedDateTime,
-        selectedTimezone,
-        timezoneOffsetHours,
-        localDate: localDate.toISOString(),
-        utcDate: utcDate.toISOString(),
-        now: now.toISOString(),
-        diffMs: utcDate.getTime() - now.getTime(),
-      });
-      toast.error(`Scheduled time must be in the future`);
+    // Parse the datetime-local input (format: "2026-04-16T07:44")
+    // Convert to dd/MM/yyyy HH:mm format for Luxon
+    const [datePart, timePart] = selectedDateTime.split('T');
+    const [year, month, day] = datePart.split('-');
+    const dateTimeString = `${day}/${month}/${year} ${timePart}`;
+    
+    // Parse using Luxon with explicit timezone
+    const selectedLocal = DateTime.fromFormat(dateTimeString, 'dd/MM/yyyy HH:mm', { zone: luxonZone });
+    
+    if (!selectedLocal.isValid) {
+      console.error('[handleSchedule] Invalid date format:', dateTimeString);
+      toast.error('Invalid date/time format');
       return;
     }
     
-    console.log(`[Schedule] Local: ${selectedDateTime}, TZ: ${selectedTimezone}, Offset: ${timezoneOffsetHours}h, UTC: ${utcDate.toISOString()}`);
-    console.error(`🎯 HANDLE_SCHEDULE CALLED: ${selectedDateTime} (${selectedTimezone}) -> UTC: ${utcDate.toISOString()}`);
+    // Convert to UTC
+    const selectedUTC = selectedLocal.toUTC();
+    
+    // Calculate difference
+    const diffMs = selectedUTC.toMillis() - nowUTC.toMillis();
+    const diffMinutes = diffMs / (1000 * 60);
+    
+    // Log all details for debugging
+    console.log('[handleSchedule] Timezone-Safe Conversion:', {
+      currentClientTimeUTC: nowUTC.toISO(),
+      currentClientTimeLocal: nowLocal.toISO(),
+      selectedLocalTime: selectedLocal.toISO(),
+      selectedUTCTime: selectedUTC.toISO(),
+      timezone: luxonZone,
+      diffMs,
+      diffMinutes: diffMinutes.toFixed(2),
+    });
+    
+    // Require at least 5 minutes in the future (buffer for processing)
+    const MIN_FUTURE_MINUTES = 5;
+    if (diffMinutes < MIN_FUTURE_MINUTES) {
+      console.error('[handleSchedule] VALIDATION FAILED: Time must be at least 5 minutes in the future');
+      console.error('[handleSchedule] Details:', {
+        currentUTC: nowUTC.toISO(),
+        selectedUTC: selectedUTC.toISO(),
+        diffMinutes: diffMinutes.toFixed(2),
+        required: MIN_FUTURE_MINUTES,
+      });
+      toast.error(`Scheduled time must be at least ${MIN_FUTURE_MINUTES} minutes in the future`);
+      return;
+    }
+    
+    console.log(`[Schedule] Selected: ${dateTimeString} (${luxonZone}) -> UTC: ${selectedUTC.toISO()}`);
     
     scheduleMutation.mutate({
       postId: scheduleModal.post.id,
       connectionId: selectedConnectionId,
       pageId: selectedPageId || undefined,
       platform: selectedPlatform,
-      scheduledAt: utcDate,
-      timezoneOffsetMinutes: Math.round(timezoneOffsetHours * 60),
+      scheduledAt: new Date(selectedUTC.toMillis()),
+      timezoneOffsetMinutes: selectedLocal.offset,
+      timezoneName: luxonZone,
     });
   };
 
-  const platformColors: Record<string, string> = {
-    facebook: "platform-facebook",
-    instagram: "platform-instagram",
-    tiktok: "platform-tiktok",
-  };
-
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
-      {/* Header */}
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-display font-semibold flex items-center gap-3">
-            <Calendar className="w-6 h-6 text-primary" />
-            Content Calendar
-          </h1>
-          <p className="text-muted-foreground text-sm mt-1">Schedule and track your content publishing</p>
-        </div>
-        <Button
-          onClick={() => setScheduleModal({ post: null, open: true })}
-          className="bg-primary text-primary-foreground gap-2"
-        >
+        <h1 className="text-3xl font-bold">Content Calendar</h1>
+        <Button onClick={() => setScheduleModal({ post: null, open: true })} className="gap-2">
           <Plus className="w-4 h-4" />
           Schedule Post
         </Button>
       </div>
 
-      {/* Month Navigation */}
-      <div className="flex items-center gap-4">
-        <button
-          onClick={() => setCurrentDate(new Date(year, month - 1, 1))}
-          className="p-2 rounded-lg hover:bg-accent/60 transition-colors"
-        >
-          <ChevronLeft className="w-4 h-4" />
-        </button>
-        <h2 className="text-lg font-display font-semibold min-w-[180px] text-center">
-          {monthNames[month]} {year}
-        </h2>
-        <button
-          onClick={() => setCurrentDate(new Date(year, month + 1, 1))}
-          className="p-2 rounded-lg hover:bg-accent/60 transition-colors"
-        >
-          <ChevronRight className="w-4 h-4" />
-        </button>
-      </div>
-
-      {/* Calendar Grid */}
-      <Card className="bg-card border-border/50">
-        <CardContent className="p-4">
-          {/* Day headers */}
-          <div className="grid grid-cols-7 mb-2">
-            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
-              <div key={d} className="text-center text-xs font-semibold text-muted-foreground py-2">
-                {d}
-              </div>
-            ))}
-          </div>
-          {/* Cells */}
-          <div className="grid grid-cols-7 gap-1">
-            {cells.map((day, idx) => {
-              if (!day) return <div key={idx} className="h-24 rounded-lg" />;
-              const dayScheduled = getScheduledForDay(day);
-              const isToday =
-                new Date().getDate() === day &&
-                new Date().getMonth() === month &&
-                new Date().getFullYear() === year;
-              return (
-                <div
-                  key={idx}
-                  className={`h-24 rounded-lg border p-1.5 transition-colors ${
-                    isToday
-                      ? "border-primary/40 bg-primary/5"
-                      : "border-border/30 hover:border-border/60"
-                  }`}
-                >
-                  <p className={`text-xs font-medium mb-1 ${isToday ? "text-primary" : "text-muted-foreground"}`}>
-                    {day}
-                  </p>
-                  <div className="space-y-0.5 overflow-hidden">
-                    {dayScheduled.slice(0, 3).map((s: any) => {
-                      const post = approvedPosts?.find((p: any) => p.id === s.postId);
-                      return (
-                        <div
-                          key={s.id}
-                          className={`text-[9px] px-1.5 py-0.5 rounded border truncate ${platformColors[s.platform] ?? ""}`}
-                        >
-                          {new Date(s.scheduledAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                          {" · "}{post?.title?.substring(0, 12) ?? s.platform}
-                        </div>
-                      );
-                    })}
-                    {dayScheduled.length > 3 && (
-                      <p className="text-[9px] text-muted-foreground px-1">+{dayScheduled.length - 3} more</p>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Upcoming Scheduled */}
-      <Card className="bg-card border-border/50">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <Clock className="w-4 h-4 text-primary" />
+      {/* Upcoming Scheduled Posts */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Clock className="w-5 h-5" />
             Upcoming Scheduled Posts
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {(scheduled ?? []).filter((s: any) => s.status === "scheduled" || s.status === "publishing").length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4 text-center">No scheduled posts this month</p>
+          {scheduledPosts.length === 0 ? (
+            <p className="text-gray-500">No scheduled posts</p>
           ) : (
-            <div className="space-y-2">
-              {(scheduled ?? [])
-                .filter((s: any) => s.status === "scheduled" || s.status === "publishing")
-                .sort((a: any, b: any) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
-                .map((s: any) => {
-                  const post = approvedPosts?.find((p: any) => p.id === s.postId);
-                  return (
-                    <div key={s.id} className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-accent/30 transition-colors">
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className={`w-2 h-2 rounded-full shrink-0 ${
-                          s.platform === "facebook" ? "bg-blue-400" :
-                          s.platform === "instagram" ? "bg-pink-400" : "bg-cyan-400"
-                        }`} />
-                        {post?.imageUrl && (
-                          <img
-                            src={post.imageUrl}
-                            alt={post?.title}
-                            className="w-12 h-12 rounded object-cover shrink-0"
-                          />
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium truncate">{post?.title ?? `Post #${s.postId}`}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {s.platform} · {new Date(s.scheduledAt).toLocaleString()}
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => cancelMutation.mutate({ id: s.id })}
-                        className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+            <div className="space-y-3">
+              {scheduledPosts.map((post: any) => (
+                <div key={post.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center gap-3 flex-1">
+                    {post.imageUrl && (
+                      <img src={post.imageUrl} alt="" className="w-12 h-12 rounded object-cover" />
+                    )}
+                    <div className="flex-1">
+                      <p className="font-medium">{post.title}</p>
+                      <p className="text-sm text-gray-500">
+                        {post.platform} • {new Date(post.scheduledAt).toLocaleString()}
+                      </p>
                     </div>
-                  );
-                })}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => deleteMutation.mutate({ id: post.id })}
+                    disabled={deleteMutation.isPending}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
             </div>
           )}
         </CardContent>
       </Card>
 
       {/* Schedule Modal */}
-      <Dialog open={!!scheduleModal} onOpenChange={() => setScheduleModal(null)}>
-        <DialogContent className="max-w-md bg-card border-border max-h-[90vh] overflow-y-auto">
+      <Dialog open={scheduleModal?.open || false} onOpenChange={(open) => setScheduleModal(open ? { post: null, open: true } : null)}>
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle className="font-display">Schedule a Post</DialogTitle>
+            <DialogTitle>Schedule a Post</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 pr-4">
+          
+          <div className="space-y-4">
+            {/* Post Selection */}
             <div>
-              <label className="text-xs text-muted-foreground mb-1.5 block">Select Approved Post</label>
+              <label className="text-sm font-medium">Select Approved Post</label>
               <select
-                className="w-full px-3 py-2 rounded-lg border border-border/50 bg-input text-sm text-foreground"
-                onChange={(e) => {
-                  const post = approvedPosts?.find((p: any) => p.id === Number(e.target.value));
-                  setScheduleModal((prev) => prev ? { ...prev, post } : null);
+                className="w-full p-2 border rounded mt-1"
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                  const post = approvedPosts.find((p: any) => p.id === parseInt(e.target.value));
+                  setScheduleModal({ post, open: true });
                 }}
-                defaultValue=""
               >
-                <option value="" disabled>Choose a post...</option>
-                {(approvedPosts ?? []).map((p: any) => {
-                  const niche = NICHES.find((n) => n.id === p.niche);
-                  return (
-                    <option key={p.id} value={p.id}>
-                      {(niche as any)?.emoji} {p.title}
-                    </option>
-                  );
-                })}
+                <option value="">Choose a post...</option>
+                {approvedPosts.map((post: any) => (
+                  <option key={post.id} value={post.id}>
+                    {post.title}
+                  </option>
+                ))}
               </select>
             </div>
+
+            {/* Platform Connection */}
             <div>
-              <label className="text-xs text-muted-foreground mb-1.5 block">Platform Connection</label>
-              {connections && connections.length > 0 ? (
-                <select
-                  className="w-full px-3 py-2 rounded-lg border border-border/50 bg-input text-sm text-foreground"
-                  value={selectedConnectionId || ""}
-                  onChange={(e) => {
-                    const connId = Number(e.target.value);
-                    const conn = connections.find((c) => c.id === connId);
-                    if (conn) {
-                      setSelectedConnectionId(connId);
-                      setSelectedPageId(conn.pageId);
-                      setSelectedPlatform("facebook");
-                    }
-                  }}
-                >
-                  <option value="" disabled>Select a page...</option>
-                  {connections.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      📘 {c.pageName || c.pageId} {!c.isActive ? "(Inactive)" : ""}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <div className="w-full px-3 py-2 rounded-lg border border-border/50 bg-input text-sm text-muted-foreground">
-                  No connections found. <a href="/connections" className="text-primary underline">Connect a page</a>
-                </div>
-              )}
+              <label className="text-sm font-medium">Platform Connection</label>
+              <select
+                className="w-full p-2 border rounded mt-1"
+                value={selectedConnectionId || ""}
+                onChange={(e) => setSelectedConnectionId(parseInt(e.target.value))}
+              >
+                <option value="">Select connection...</option>
+                {connections?.map((conn: any) => (
+                  <option key={conn.id} value={conn.id}>
+                    {conn.name}
+                  </option>
+                ))}
+              </select>
             </div>
+
+            {/* Platform */}
             <div>
-              <label className="text-xs text-muted-foreground mb-1.5 block">Platform</label>
-              <div className="flex gap-2">
-                {["facebook", "instagram", "tiktok"].map((platform) => (
+              <label className="text-sm font-medium">Platform</label>
+              <div className="flex gap-2 mt-2">
+                {['facebook', 'instagram', 'tiktok'].map((platform) => (
                   <button
                     key={platform}
-                    onClick={() => setSelectedPlatform(platform as "facebook" | "instagram" | "tiktok")}
-                    className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-all ${
-                      selectedPlatform === platform
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border/50 bg-input text-muted-foreground hover:border-border"
+                    onClick={() => setSelectedPlatform(platform as any)}
+                    className={`px-4 py-2 rounded border ${
+                      selectedPlatform === platform ? 'bg-blue-500 text-white' : 'border-gray-300'
                     }`}
                   >
-                    {platform === "facebook" && "📘 Facebook"}
-                    {platform === "instagram" && "📷 Instagram"}
-                    {platform === "tiktok" && "🎵 TikTok"}
+                    {platform.charAt(0).toUpperCase() + platform.slice(1)}
                   </button>
                 ))}
               </div>
             </div>
+
+            {/* Timezone */}
             <div>
-              <label className="text-xs text-muted-foreground mb-1.5 block">Timezone</label>
+              <label className="text-sm font-medium">Timezone</label>
               <select
+                className="w-full p-2 border rounded mt-1"
                 value={selectedTimezone}
                 onChange={(e) => setSelectedTimezone(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-border/50 bg-input text-sm text-foreground"
               >
                 <option value="AEST">AEST (UTC+10) - Australia Eastern</option>
                 <option value="AEDT">AEDT (UTC+11) - Australia Eastern Daylight</option>
                 <option value="ACST">ACST (UTC+9:30) - Australia Central</option>
                 <option value="ACDT">ACDT (UTC+10:30) - Australia Central Daylight</option>
                 <option value="AWST">AWST (UTC+8) - Australia Western</option>
-                <option value="UTC">UTC (UTC+0) - Coordinated Universal Time</option>
+                <option value="UTC">UTC (UTC+0)</option>
               </select>
             </div>
+
+            {/* Date & Time */}
             <div>
-              <label className="text-xs text-muted-foreground mb-1.5 block">Date & Time</label>
+              <label className="text-sm font-medium">Date & Time ({selectedTimezone})</label>
               <input
                 type="datetime-local"
+                className="w-full p-2 border rounded mt-1"
                 value={selectedDateTime}
                 onChange={(e) => setSelectedDateTime(e.target.value)}
-                min={new Date().toISOString().slice(0, 16)}
-                className="w-full px-3 py-2 rounded-lg border border-border/50 bg-input text-sm text-foreground"
               />
             </div>
-            <Button
-              onClick={handleSchedule}
-              disabled={scheduleMutation.isPending || !scheduleModal?.post || !selectedDateTime}
-              className="w-full bg-primary text-primary-foreground gap-2"
-            >
-              {scheduleMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calendar className="w-4 h-4" />}
-              Schedule Post
-            </Button>
+
+            {/* Action Buttons */}
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setScheduleModal(null)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSchedule}
+                disabled={scheduleMutation.isPending}
+                className="gap-2"
+              >
+                {scheduleMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                Schedule Post
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
