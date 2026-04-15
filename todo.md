@@ -133,12 +133,18 @@
 - [ ] Create database helper functions in db.ts
 
 ### Phase 2: Publishing Worker
-- [ ] Create `server/jobs/publishingWorker.ts` with atomic job claiming
-- [ ] Implement `SELECT ... FOR UPDATE` locking for atomic claiming
+- [ ] Create `server/jobs/publishingWorker.ts` with atomic job claiming - NEEDS TESTING
+- [ ] Implement atomic compare-and-swap locking (UPDATE with WHERE status=scheduled) - IMPLEMENTED, NEEDS VERIFICATION
 - [ ] Add retry logic with exponential backoff
 - [ ] Create error handling utilities (error codes, retry decisions)
-- [ ] Implement provider dispatch (Facebook, Instagram, TikTok)
+- [ ] Implement provider dispatch (Facebook, Instagram, TikTok) - FACEBOOK/INSTAGRAM DONE, TIKTOK STUBBED
 - [ ] Add logging for job execution
+- [ ] FIX: Prevent duplicate publishing with atomic job claiming - IN PROGRESS
+- [ ] Remove 14-hour offset workaround from publishing worker (Luxon now handles timezone)
+- [ ] Add idempotency check: skip if remotePostId exists or status=published
+- [ ] Persist remotePostId immediately on successful publish
+- [ ] Prevent retries after successful publishing
+- [ ] Test duplicate publishing prevention with concurrent workers
 
 ### Phase 3: Provider Publishing Functions
 - [x] Update `publishToFacebookPage()` to support direct binary image upload (Option B)
@@ -173,12 +179,12 @@
 - [ ] Update Publishing page to use new tRPC endpoints
 
 ### Phase 6: Database Helpers
-- [ ] Create `getScheduledPostsReadyToPublish()` helper
-- [ ] Create `claimScheduledPost()` helper with atomic locking
-- [ ] Create `updateScheduledPostStatus()` helper
-- [ ] Create `createPublishingJob()` helper
-- [ ] Create `getConnectionWithCredentials()` helper
-- [ ] Create `getMultiplePages()` helper for Facebook
+- [ ] Create `getScheduledPostsReadyToPublish()` helper - NEEDS INTEGRATION with publishing worker
+- [ ] Create `claimScheduledPost()` helper with atomic locking - NEEDS INTEGRATION with publishing worker
+- [ ] Create `updateScheduledPostStatus()` helper - NEEDS DEDICATED HELPER (not just updateScheduledPost)
+- [ ] Create `createPublishingJob()` helper - SCOPE: Deferred, use scheduled_posts table directly
+- [ ] Create `getConnectionWithCredentials()` helper - NEEDS INTEGRATION with publishing worker
+- [ ] Create `getMultiplePages()` helper for Facebook - SCOPE: Deferred, use single connection for now
 
 ### Phase 7: Testing
 - [ ] Write unit tests for atomic job claiming

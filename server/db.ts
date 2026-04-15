@@ -531,3 +531,66 @@ export async function revokeInviteCode(code: string) {
     .set({ isActive: 0 })
     .where(eq(inviteCodes.code, code));
 }
+
+/**
+ * Get scheduled posts ready to publish (status = 'scheduled' and scheduledAt <= now)
+ */
+export async function getScheduledPostsReadyToPublish() {
+  const db = await getDb();
+  if (!db) return [];
+  const now = new Date().toISOString();
+  return db
+    .select()
+    .from(scheduledPosts)
+    .where(
+      and(
+        eq(scheduledPosts.status, 'scheduled' as any),
+        lte(scheduledPosts.scheduledAt, now)
+      )
+    )
+    .orderBy(scheduledPosts.scheduledAt);
+}
+
+/**
+ * Claim a scheduled post for publishing (atomic operation)
+ * Returns the post if successfully claimed, null if already claimed
+ */
+export async function claimScheduledPost(postId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  
+  // Update status to 'publishing' atomically
+  const result = await db
+    .update(scheduledPosts)
+    .set({ status: 'publishing' as any, updatedAt: new Date().toISOString() })
+    .where(and(
+      eq(scheduledPosts.id, postId),
+      eq(scheduledPosts.status, 'scheduled' as any)
+    ));
+  
+  // If no rows were updated, the post was already claimed
+  if ((result as any).rowsAffected === 0) return null;
+  
+  // Fetch and return the claimed post
+  const posts = await db
+    .select()
+    .from(scheduledPosts)
+    .where(eq(scheduledPosts.id, postId))
+    .limit(1);
+  
+  return posts[0] || null;
+}
+
+/**
+ * Get connection with credentials for publishing
+ */
+export async function getConnectionWithCredentials(connectionId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db
+    .select()
+    .from(platformConnections)
+    .where(eq(platformConnections.id, connectionId))
+    .limit(1);
+  return result[0];
+}

@@ -1,4 +1,4 @@
-import { getDb } from "../db";
+import { getDb, getConnectionWithCredentials } from "../db";
 import { scheduledPosts, publishingJobs, contentPosts, platformConnections } from "../../drizzle/schema";
 import { eq, and, lte, or, isNull } from "drizzle-orm";
 import { publishToFacebookPage, publishToInstagram } from "../platformPublisher";
@@ -56,7 +56,7 @@ interface ErrorClassification {
  */
 async function claimScheduledPost(): Promise<PublishingContext | null> {
   try {
-    const db = await getDb();
+    const db = await getDb() as any;
     if (!db) return null;
     
     // Find ONE post ready to publish (status = scheduled, scheduledAt <= now, not in retry window)
@@ -68,52 +68,59 @@ async function claimScheduledPost(): Promise<PublishingContext | null> {
     
     // Get all scheduled posts and filter in JavaScript
     const allScheduledPosts = await db.select().from(scheduledPosts).where(
-      eq(scheduledPosts.status, "scheduled")
+      eq(scheduledPosts.status, "scheduled" as any)
     ).limit(10);
     
-    // WORKAROUND: Frontend sends times 14 hours in the future (AEST offset 10h + EDT offset 4h)
-    // Subtract 14 hours to get the actual intended time
-    const readyPosts = allScheduledPosts.filter(p => {
+    // Filter for posts ready to publish (scheduledAt <= now)
+    // Frontend now uses Luxon to correctly convert AEST -> UTC, so no offset correction needed
+    const readyPosts = allScheduledPosts.filter((p: any) => {
       const storedDate = new Date(p.scheduledAt);
-      // Subtract 14 hours to compensate for frontend offset
-      const correctedDate = new Date(storedDate.getTime() - (14 * 60 * 60 * 1000));
-      const utcTime = correctedDate.toISOString();
-      const isReady = utcTime <= bufferTime && (p.nextRetryAt === null || p.nextRetryAt <= nowISO);
-      console.log(`[PW] Post ${p.id}: Stored=${p.scheduledAt}, Corrected=${utcTime}, Ready=${isReady}`);
+      const isReady = storedDate <= now && (p.nextRetryAt === null || p.nextRetryAt <= nowISO);
+      console.log(`[PW] Post ${p.id}: ScheduledAt=${p.scheduledAt}, Now=${nowISO}, Ready=${isReady}`);
       return isReady;
     }).slice(0, 1);
 
     if (!readyPosts.length) {
       const upcoming = await db.select().from(scheduledPosts).where(
-        eq(scheduledPosts.status, "scheduled")
+        eq(scheduledPosts.status, "scheduled" as any)
       ).limit(1);
       if (upcoming.length > 0) {
         const p = upcoming[0];
         const storedDate = new Date(p.scheduledAt);
-        const correctedDate = new Date(storedDate.getTime() - (14 * 60 * 60 * 1000));
-        const diff = correctedDate.getTime() - now.getTime();
+        const diff = storedDate.getTime() - now.getTime();
         console.log(`[PW] Next post ID ${p.id}:`);
-        console.log(`[PW]   Stored: ${p.scheduledAt}`);
-        console.log(`[PW]   Corrected: ${correctedDate.toISOString()}`);
+        console.log(`[PW]   ScheduledAt: ${p.scheduledAt}`);
         console.log(`[PW]   Current UTC: ${nowISO}`);
         console.log(`[PW]   Difference: ${Math.round(diff/1000)}s away`);
-        console.log(`[PW]   Buffer time: ${bufferTime}`);
       }
       return null;
     }
 
     const post = readyPosts[0];
 
-    // Update to "publishing" status
-    // This prevents other workers from claiming the same job
-    await db
+    // ATOMIC CLAIM: Update to "publishing" status ONLY if still "scheduled"
+    // This prevents race condition where multiple workers claim the same job
+    // If another worker already claimed it, the update will affect 0 rows
+    const updateResult = await db
       .update(scheduledPosts)
       .set({
-        status: "publishing",
+        status: "publishing" as any,
         publishingStartedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       })
-      .where(eq(scheduledPosts.id, post.id));
+      .where(and(
+        eq(scheduledPosts.id, post.id),
+        eq(scheduledPosts.status, "scheduled" as any)  // Only update if still scheduled
+      ));
+
+    // Check if claim was successful
+    const rowsAffected = (updateResult as any).rowsAffected || 0;
+    if (rowsAffected === 0) {
+      console.log(`[PW] Post ${post.id} already claimed by another worker. Skipping.`);
+      return null;  // Another worker already claimed this job
+    }
+
+    console.log(`[PW] ✅ Successfully claimed post ${post.id} for publishing`);
 
     return {
       scheduledPostId: post.id,
@@ -196,6 +203,7 @@ async function publishScheduledPost(context: PublishingContext): Promise<void> {
     console.error("[PublishingWorker] DB unavailable");
     return;
   }
+  // Note: createPublishingJob is a local function defined below
   const jobId = await createPublishingJob(context);
 
   try {
@@ -214,8 +222,7 @@ async function publishScheduledPost(context: PublishingContext): Promise<void> {
     if (!context.connectionId) {
       throw new Error("No connection ID provided");
     }
-    const connection = await getPlatformConnectionWithCredentials(
-      context.userId,
+    const connection = await getConnectionWithCredentials(
       context.connectionId
     );
 
@@ -246,19 +253,19 @@ async function publishScheduledPost(context: PublishingContext): Promise<void> {
     }
 
     // Step 3: Check if already published (prevent duplicates on retry)
-    // Only skip if this is a retry (retryCount > 0) AND we have a remotePostId
-    if (post.retryCount > 0 && post.remotePostId) {
-      console.log(`[PublishingWorker] Post ${context.postId} already published (retry #${post.retryCount}). Skipping duplicate publish.`);
-      // Mark as published and return
-      await db
-        .update(scheduledPosts)
-        .set({
-          status: "published",
-          publishedAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(scheduledPosts.id, context.scheduledPostId));
-      return;
+    // Skip if:
+    // 1. Scheduled post already has remotePostId (means it was published)
+    // 2. Scheduled post status is already 'published'
+    const scheduledPost = await db.select().from(scheduledPosts).where(eq(scheduledPosts.id, context.scheduledPostId)).limit(1);
+    const currentScheduledPost = scheduledPost[0];
+    
+    if (currentScheduledPost?.remotePostId || currentScheduledPost?.status === 'published') {
+      console.log(`[PublishingWorker] ⏭️  Post ${context.postId} already published. Skipping duplicate publish.`, {
+        scheduledPostId: context.scheduledPostId,
+        remotePostId: currentScheduledPost?.remotePostId,
+        status: currentScheduledPost?.status,
+      });
+      return;  // Already published, skip
     }
 
     // Step 4: Publish to platform
@@ -290,6 +297,7 @@ async function publishScheduledPost(context: PublishingContext): Promise<void> {
     // Step 5: Handle result
     if (result.success && result.platformPostId) {
       // SUCCESS: Mark as published
+      // Note: updatePublishingJob is a local function defined below
       await updatePublishingJob(jobId, {
         status: "success",
         completedAt: new Date(),
