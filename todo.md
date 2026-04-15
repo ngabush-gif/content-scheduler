@@ -108,6 +108,20 @@
 
 ---
 
+## Luxon Timezone Refactoring (COMPLETED)
+- [x] Install Luxon library and @types/luxon
+- [x] Refactor ContentCalendar.tsx handleSchedule function to use Luxon
+- [x] Parse selected date/time explicitly with Australia/Brisbane timezone
+- [x] Convert to UTC before sending to backend
+- [x] Add 5-minute minimum buffer validation
+- [x] Add detailed console logging for debugging
+- [x] Fix backend scheduleRouter.ts to accept UTC timestamps
+- [x] Remove double timezone correction from publishing worker
+- [x] Test end-to-end scheduling and publishing
+- [x] User successfully scheduled posts on mobile (Samsung S25 Chrome)
+- [x] Posts show in calendar with correct AEST times
+- [x] Publishing worker running and monitoring for scheduled posts
+
 ## Direct Publishing MVP (IN PROGRESS)
 
 ### Phase 1: Schema Updates
