@@ -71,17 +71,15 @@ async function claimScheduledPost(): Promise<PublishingContext | null> {
       eq(scheduledPosts.status, "scheduled")
     ).limit(10);
     
-    // Frontend already converted to UTC, so stored time is UTC
-    // Database stores as string without timezone: "2026-04-15 07:17:00"
-    // We need to parse it as UTC by adding Z suffix
+    // WORKAROUND: Frontend sends times 14 hours in the future (AEST offset 10h + EDT offset 4h)
+    // Subtract 14 hours to get the actual intended time
     const readyPosts = allScheduledPosts.filter(p => {
-      // Parse the stored time as UTC by adding Z suffix
-      const storedDateStr = p.scheduledAt;
-      const utcDateStr = storedDateStr.includes('T') ? storedDateStr : storedDateStr.replace(' ', 'T');
-      const utcDate = new Date(utcDateStr + 'Z');
-      const utcTime = utcDate.toISOString();
+      const storedDate = new Date(p.scheduledAt);
+      // Subtract 14 hours to compensate for frontend offset
+      const correctedDate = new Date(storedDate.getTime() - (14 * 60 * 60 * 1000));
+      const utcTime = correctedDate.toISOString();
       const isReady = utcTime <= bufferTime && (p.nextRetryAt === null || p.nextRetryAt <= nowISO);
-      console.log(`[PW] Post ${p.id}: Stored=${p.scheduledAt}, Parsed=${utcDateStr}Z, UTC=${utcTime}, Ready=${isReady}`);
+      console.log(`[PW] Post ${p.id}: Stored=${p.scheduledAt}, Corrected=${utcTime}, Ready=${isReady}`);
       return isReady;
     }).slice(0, 1);
 
@@ -91,11 +89,12 @@ async function claimScheduledPost(): Promise<PublishingContext | null> {
       ).limit(1);
       if (upcoming.length > 0) {
         const p = upcoming[0];
-        const storedTime = new Date(p.scheduledAt);
-        const diff = storedTime.getTime() - now.getTime();
+        const storedDate = new Date(p.scheduledAt);
+        const correctedDate = new Date(storedDate.getTime() - (14 * 60 * 60 * 1000));
+        const diff = correctedDate.getTime() - now.getTime();
         console.log(`[PW] Next post ID ${p.id}:`);
         console.log(`[PW]   Stored: ${p.scheduledAt}`);
-        console.log(`[PW]   Parsed as: ${storedTime.toISOString()}`);
+        console.log(`[PW]   Corrected: ${correctedDate.toISOString()}`);
         console.log(`[PW]   Current UTC: ${nowISO}`);
         console.log(`[PW]   Difference: ${Math.round(diff/1000)}s away`);
         console.log(`[PW]   Buffer time: ${bufferTime}`);

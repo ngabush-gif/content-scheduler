@@ -31,6 +31,9 @@ export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
       _db = drizzle(process.env.DATABASE_URL);
+      // Set session timezone to UTC after connecting
+      // This ensures all TIMESTAMP columns are treated as UTC
+      await _db.execute("SET SESSION time_zone = '+00:00'");
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;

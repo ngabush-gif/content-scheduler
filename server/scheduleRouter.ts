@@ -47,6 +47,14 @@ export const scheduleRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      console.log('[scheduleRouter.create] Input received:', JSON.stringify({
+        postId: input.postId,
+        connectionId: input.connectionId,
+        platform: input.platform,
+        scheduledAt: input.scheduledAt?.toISOString?.() || input.scheduledAt,
+        timezoneOffsetMinutes: input.timezoneOffsetMinutes,
+      }, null, 2));
+      
       // Step 1: Verify post exists and belongs to user
       const post = await getContentPostById(input.postId);
       if (!post) {
@@ -90,6 +98,14 @@ export const scheduleRouter = router({
       // Step 5: Create scheduled post
       let scheduledAtISO = input.scheduledAt instanceof Date ? input.scheduledAt.toISOString() : input.scheduledAt;
       
+      console.log('[scheduleRouter.create] Creating scheduled post:', {
+        postId: input.postId,
+        scheduledById: ctx.user.id,
+        connectionId: input.connectionId,
+        platform: input.platform,
+        scheduledAtISO,
+      });
+      
       // NOTE: Frontend already converts local AEST time to UTC before sending
       // Do NOT apply timezone correction here - it would cause double-subtraction
       const result = await createScheduledPost({
@@ -107,6 +123,7 @@ export const scheduleRouter = router({
       });
 
       // createScheduledPost returns the inserted row with id
+      console.log('[scheduleRouter.create] Success! Scheduled post ID:', result.id);
       return { success: true, scheduledPostId: result.id || 0 };
     }),
 

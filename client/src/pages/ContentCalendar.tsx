@@ -114,30 +114,31 @@ function CalendarContent() {
       return;
     }
     
-    // Map timezone names to offsets
+    // Map timezone names to UTC offsets (positive = ahead of UTC)
     const timezoneOffsets: Record<string, number> = {
-      'AEST': -600,
-      'AEDT': -660,
-      'ACST': -570,
-      'ACDT': -630,
-      'AWST': -480,
-      'UTC': 0,
+      'AEST': 10,    // UTC+10
+      'AEDT': 11,    // UTC+11
+      'ACST': 9.5,   // UTC+9:30
+      'ACDT': 10.5,  // UTC+10:30
+      'AWST': 8,     // UTC+8
+      'UTC': 0,      // UTC+0
     };
     
-    const timezoneOffsetMinutes = timezoneOffsets[selectedTimezone] || 0;
+    const timezoneOffsetHours = timezoneOffsets[selectedTimezone] || 0;
     
-    // datetime-local input returns a string like "2026-04-15T16:52"
+    // Convert local time to UTC
+    // datetime-local input returns a string like "2026-04-16T06:20"
     // When parsed as Date, JS treats it as UTC, not local time
-    // Example: User selects 17:07 AEST (local time)
-    // - datetime-local gives: "2026-04-15T17:07"
-    // - new Date treats as UTC: 2026-04-15T17:07:00.000Z
-    // - We want UTC time: 2026-04-15T07:07:00.000Z (subtract 10 hours)
-    // - So subtract the offset: 17:07 - 10 hours = 07:07 UTC
+    // Example: User selects 06:20 AEST (UTC+10)
+    // - datetime-local gives: "2026-04-16T06:20"
+    // - new Date treats as UTC: 2026-04-16T06:20:00.000Z
+    // - We want UTC time: 2026-04-15T20:20:00.000Z (subtract 10 hours)
+    // - So: 06:20 - 10 hours = 20:20 previous day UTC
     const localDate = new Date(selectedDateTime);
-    const utcDate = new Date(localDate.getTime() - (timezoneOffsetMinutes * 60 * 1000));
+    const utcDate = new Date(localDate.getTime() - (timezoneOffsetHours * 60 * 60 * 1000));
     
-    console.log(`[Schedule] Local: ${selectedDateTime}, TZ: ${selectedTimezone}, Offset: ${timezoneOffsetMinutes}min, UTC: ${utcDate.toISOString()}`);
-    console.error(`🎯 HANDLE_SCHEDULE CALLED: ${selectedDateTime} -> ${utcDate.toISOString()}`);
+    console.log(`[Schedule] Local: ${selectedDateTime}, TZ: ${selectedTimezone}, Offset: ${timezoneOffsetHours}h, UTC: ${utcDate.toISOString()}`);
+    console.error(`🎯 HANDLE_SCHEDULE CALLED: ${selectedDateTime} (${selectedTimezone}) -> UTC: ${utcDate.toISOString()}`);
     
     scheduleMutation.mutate({
       postId: scheduleModal.post.id,
@@ -145,7 +146,7 @@ function CalendarContent() {
       pageId: selectedPageId || undefined,
       platform: selectedPlatform,
       scheduledAt: utcDate,
-      timezoneOffsetMinutes: 0,
+      timezoneOffsetMinutes: Math.round(timezoneOffsetHours * 60),
     });
   };
 
