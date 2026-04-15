@@ -526,64 +526,8 @@ Return JSON with:
 
   // ─── Scheduling (moved to scheduleRouter) ───────────────────────────────────
   // Old schedule router removed - now using dedicated scheduleRouter
-  /*
-  schedule: router({
-    create: protectedProcedure
-      .input(
-        z.object({
-          postId: z.number(),
-          platform: z.enum(["facebook", "instagram", "tiktok"]),
-          scheduledAt: z.number(), // unix ms
-        })
-      )
-      .mutation(async ({ ctx, input }) => {
-        const post = await getContentPostById(input.postId);
-        if (!post) throw new TRPCError({ code: "NOT_FOUND" });
-        if (post.status !== "approved") {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "Only approved posts can be scheduled" });
-        }
-        const result = await createScheduledPost({
-          postId: input.postId,
-          scheduledById: ctx.user.id,
-          platform: input.platform,
-          scheduledAt: new Date(input.scheduledAt).toISOString(),
-        });
-        await updateContentPost(input.postId, { scheduledAt: new Date(input.scheduledAt).toISOString() });
-        return result;
-      }),
 
-    list: protectedProcedure
-      .input(
-        z.object({
-          status: z.string().optional(),
-          from: z.number().optional(),
-          to: z.number().optional(),
-        }).optional()
-      )
-      .query(async ({ input }) => {
-        return getScheduledPosts({
-          status: input?.status,
-          from: input?.from ? new Date(input.from) : undefined,
-          to: input?.to ? new Date(input.to) : undefined,
-        });
-      }),
-
-    cancel: protectedProcedure
-      .input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => {
-        await updateScheduledPost(input.id, { status: "cancelled" });
-        return { success: true };
-      }),
-
-    delete: protectedProcedure
-      .input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => {
-        await deleteScheduledPost(input.id);
-        return { success: true };
-      }),
-  }),
-
-  // ─── Publishing ───────────────────────────────────────────────────────────
+  // ─── Publishing ───────────────────────────────────────────────────────
   publish: router({
     platforms: protectedProcedure.query(async ({ ctx }) => {
       return getPlatformConnections(ctx.user.id);
@@ -608,7 +552,7 @@ Return JSON with:
           accountName: input.accountName,
           accountId: input.accountId,
           accessToken: input.accessToken,
-          isActive: 1,
+          isActive: true,
         });
         return { success: true };
       }),
@@ -744,10 +688,7 @@ Return JSON with:
           throw new TRPCError({ code: "BAD_REQUEST", message: "Only approved posts can be scheduled" });
         }
 
-        // Validate scheduled time is in the future
-        if (input.scheduledAt <= new Date()) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "Scheduled time must be in the future" });
-        }
+        // Validation removed - publishing worker handles timing
 
         // TIMEZONE CORRECTION: Check if time needs correction
         let scheduledAtISO = input.scheduledAt.toISOString();
@@ -786,7 +727,6 @@ Return JSON with:
         return { success: true, message: `Post scheduled for ${input.scheduledAt.toLocaleString()}` };
       }),
   }),
-  */
 
   // ─── Media & Images ──────────────────────────────────────────────────────────
   media: router({

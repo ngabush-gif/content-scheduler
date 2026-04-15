@@ -136,6 +136,23 @@ function CalendarContent() {
     // - So: 06:20 - 10 hours = 20:20 previous day UTC
     const localDate = new Date(selectedDateTime);
     const utcDate = new Date(localDate.getTime() - (timezoneOffsetHours * 60 * 60 * 1000));
+    const now = new Date();
+    
+    // Client-side validation to match backend
+    if (utcDate <= now) {
+      console.error('[handleSchedule] VALIDATION FAILED: Time is not in the future');
+      console.error('[handleSchedule] Details:', {
+        selectedDateTime,
+        selectedTimezone,
+        timezoneOffsetHours,
+        localDate: localDate.toISOString(),
+        utcDate: utcDate.toISOString(),
+        now: now.toISOString(),
+        diffMs: utcDate.getTime() - now.getTime(),
+      });
+      toast.error(`Scheduled time must be in the future`);
+      return;
+    }
     
     console.log(`[Schedule] Local: ${selectedDateTime}, TZ: ${selectedTimezone}, Offset: ${timezoneOffsetHours}h, UTC: ${utcDate.toISOString()}`);
     console.error(`🎯 HANDLE_SCHEDULE CALLED: ${selectedDateTime} (${selectedTimezone}) -> UTC: ${utcDate.toISOString()}`);

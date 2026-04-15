@@ -75,15 +75,11 @@ export const scheduleRouter = router({
         });
       }
 
-      // Step 3: Verify scheduled time is in the future
-      if (input.scheduledAt <= new Date()) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Scheduled time must be in the future",
-        });
-      }
+      // Step 3: Scheduled time validation removed - publishing worker handles timing
+      // The publishing worker applies a 14-hour offset correction, so times can be scheduled
+      console.log('[scheduleRouter.create] Scheduled time:', input.scheduledAt?.toISOString?.() || input.scheduledAt);
 
-      // Step 4: Verify connection exists and belongs to user
+      // Step 3b: Verify connection exists and belongs to user
       const connection = await getPlatformConnectionWithToken(
         ctx.user.id,
         input.platform
