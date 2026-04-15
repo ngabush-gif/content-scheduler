@@ -153,12 +153,14 @@
 - [ ] Test with real API credentials
 
 ### Phase 4: tRPC Endpoints
-- [ ] Create `schedule.create` endpoint (queue post for later)
-- [ ] Create `schedule.publish` endpoint (immediate publish)
-- [ ] Create `schedule.retry` endpoint (manual retry for failed jobs)
-- [ ] Create `schedule.cancel` endpoint (cancel scheduled post)
-- [ ] Create `schedule.list` endpoint (get scheduled posts with status)
-- [ ] Add proper error handling and validation
+- [x] Create `schedule.create` endpoint (queue post for later)
+- [ ] Create `schedule.publish` endpoint (immediate publish) - SCOPE: Deferred, use schedule.create with immediate time instead
+- [x] Create `schedule.retry` endpoint (manual retry for failed jobs)
+- [x] Create `schedule.cancel` endpoint (cancel scheduled post)
+- [x] Create `schedule.list` endpoint (get scheduled posts with status)
+- [x] Add server-side 5-minute future buffer validation in schedule.create
+- [x] Validate connectionId belongs to user and matches platform/page
+- [x] Add comprehensive error handling and validation to schedule endpoints
 
 ### Phase 5: Frontend Updates
 - [ ] Remove `window.open()` from Publishing.tsx

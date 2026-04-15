@@ -283,6 +283,17 @@ export async function getPlatformConnectionWithToken(userId: number, platform: "
   return result[0];
 }
 
+export async function getPlatformConnectionById(connectionId: number, userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db
+    .select()
+    .from(platformConnections)
+    .where(and(eq(platformConnections.id, connectionId), eq(platformConnections.userId, userId)))
+    .limit(1);
+  return result[0];
+}
+
 // ─── Publish Log ───────────────────────────────────────────────────────────────
 
 export async function addPublishLog(data: {

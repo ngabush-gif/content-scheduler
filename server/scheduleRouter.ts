@@ -6,6 +6,7 @@ import {
   createScheduledPost,
   getContentPostById,
   getPlatformConnectionWithToken,
+  getPlatformConnectionById,
   getScheduledPosts,
   updateScheduledPost,
 } from "./db";
@@ -75,19 +76,53 @@ export const scheduleRouter = router({
         });
       }
 
-      // Step 3: Scheduled time validation removed - publishing worker handles timing
-      // The publishing worker applies a 14-hour offset correction, so times can be scheduled
-      console.log('[scheduleRouter.create] Scheduled time:', input.scheduledAt?.toISOString?.() || input.scheduledAt);
+      // Step 3: Validate scheduled time is at least 5 minutes in the future
+      const nowUTC = DateTime.utc();
+      const scheduledUTC = DateTime.fromISO(input.scheduledAt.toISOString(), { zone: 'UTC' });
+      const diffMs = scheduledUTC.toMillis() - nowUTC.toMillis();
+      const diffMinutes = diffMs / (1000 * 60);
+      const MIN_FUTURE_MINUTES = 5;
+      
+      console.log('[scheduleRouter.create] Validation:', {
+        currentServerUTC: nowUTC.toISO(),
+        receivedScheduledAt: input.scheduledAt.toISOString(),
+        diffMs: diffMs.toFixed(0),
+        diffMinutes: diffMinutes.toFixed(2),
+        required: MIN_FUTURE_MINUTES,
+      });
+      
+      if (diffMinutes < MIN_FUTURE_MINUTES) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Scheduled time must be at least ${MIN_FUTURE_MINUTES} minutes in the future`,
+        });
+      }
 
-      // Step 3b: Verify connection exists and belongs to user
-      const connection = await getPlatformConnectionWithToken(
-        ctx.user.id,
-        input.platform
+      // Step 3b: Verify connection exists, belongs to user, and matches platform
+      const connection = await getPlatformConnectionById(
+        input.connectionId,
+        ctx.user.id
       );
       if (!connection) {
         throw new TRPCError({
           code: "NOT_FOUND",
-          message: "Platform connection not found",
+          message: "Platform connection not found or does not belong to you",
+        });
+      }
+      
+      // Verify connection platform matches requested platform
+      if (connection.platform !== input.platform) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Connection is for ${connection.platform}, but you requested ${input.platform}`,
+        });
+      }
+      
+      // Verify connection has valid access token
+      if (!connection.accessToken) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Platform connection does not have a valid access token. Please reconnect.",
         });
       }
 
