@@ -171,6 +171,9 @@ export async function getApprovalHistoryByPost(postId: number) {
 export async function createScheduledPost(data: InsertScheduledPost): Promise<{ id: number }> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
+  
+  // NOTE: Frontend already converts local time to UTC before sending
+  // Store the UTC timestamp as-is without any correction
   const result = await db.insert(scheduledPosts).values(data).$returningId();
   return { id: (result as any)[0]?.id || 0 };
 }

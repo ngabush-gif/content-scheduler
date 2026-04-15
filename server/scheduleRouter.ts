@@ -20,6 +20,8 @@ import {
  * - Cancelling scheduled posts
  */
 
+console.log('[ScheduleRouter] Initializing...');
+
 export const scheduleRouter = router({
   /**
    * Create a scheduled post
@@ -86,7 +88,10 @@ export const scheduleRouter = router({
       }
 
       // Step 5: Create scheduled post
-      const scheduledAtISO = input.scheduledAt instanceof Date ? input.scheduledAt.toISOString() : input.scheduledAt;
+      let scheduledAtISO = input.scheduledAt instanceof Date ? input.scheduledAt.toISOString() : input.scheduledAt;
+      
+      // NOTE: Frontend already converts local AEST time to UTC before sending
+      // Do NOT apply timezone correction here - it would cause double-subtraction
       const result = await createScheduledPost({
         postId: input.postId,
         scheduledById: ctx.user.id,

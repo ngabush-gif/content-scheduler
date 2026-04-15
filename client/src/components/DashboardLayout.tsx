@@ -92,7 +92,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mb-2">
               <Crown className="w-8 h-8 text-primary" />
             </div>
-            <h1 className="text-3xl font-display font-semibold text-gold-gradient">ContentCreator Hub</h1>
+            <h1 className="text-3xl font-display font-semibold text-gold-gradient">Upliftaz Amplify</h1>
             <p className="text-sm text-muted-foreground max-w-xs">
               Your intelligent social media command centre. Sign in to access your team workspace.
             </p>
@@ -195,7 +195,7 @@ function DashboardLayoutContent({
                     <Sparkles className="w-3.5 h-3.5 text-primary" />
                   </div>
                   <span className="font-display font-semibold text-sm text-gold-gradient truncate">
-                    ContentCreator Hub
+                    Upliftaz Amplify
                   </span>
                 </div>
               )}

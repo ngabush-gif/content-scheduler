@@ -125,11 +125,19 @@ function CalendarContent() {
     };
     
     const timezoneOffsetMinutes = timezoneOffsets[selectedTimezone] || 0;
-    const localDate = new Date(selectedDateTime);
     
+    // datetime-local input returns a string like "2026-04-15T16:52"
+    // When parsed as Date, JS treats it as UTC, not local time
+    // Example: User selects 17:07 AEST (local time)
+    // - datetime-local gives: "2026-04-15T17:07"
+    // - new Date treats as UTC: 2026-04-15T17:07:00.000Z
+    // - We want UTC time: 2026-04-15T07:07:00.000Z (subtract 10 hours)
+    // - So subtract the offset: 17:07 - 10 hours = 07:07 UTC
+    const localDate = new Date(selectedDateTime);
     const utcDate = new Date(localDate.getTime() - (timezoneOffsetMinutes * 60 * 1000));
     
     console.log(`[Schedule] Local: ${selectedDateTime}, TZ: ${selectedTimezone}, Offset: ${timezoneOffsetMinutes}min, UTC: ${utcDate.toISOString()}`);
+    console.error(`🎯 HANDLE_SCHEDULE CALLED: ${selectedDateTime} -> ${utcDate.toISOString()}`);
     
     scheduleMutation.mutate({
       postId: scheduleModal.post.id,

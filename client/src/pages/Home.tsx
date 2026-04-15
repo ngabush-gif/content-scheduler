@@ -54,7 +54,7 @@ export default function Home() {
           <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
             <Sparkles className="w-4.5 h-4.5 text-primary" />
           </div>
-          <span className="font-display font-semibold text-lg text-gold-gradient">ContentCreator Hub</span>
+          <span className="font-display font-semibold text-lg text-gold-gradient">Upliftaz Amplify</span>
         </div>
         <Button
           onClick={() => { window.location.href = getLoginUrl(); }}
@@ -152,7 +152,7 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="relative z-10 border-t border-border/30 py-6 text-center text-sm text-muted-foreground">
-        <p>© 2026 ContentCreator Hub · Built for ambitious teams</p>
+        <p>© 2026 Upliftaz Amplify · Built for ambitious teams</p>
       </footer>
     </div>
   );

@@ -1,7 +1,7 @@
 import { getDb } from "../db";
 import { scheduledPosts, publishingJobs, contentPosts, platformConnections } from "../../drizzle/schema";
 import { eq, and, lte, or, isNull } from "drizzle-orm";
-import { publishToFacebookPage } from "../platformPublisher";
+import { publishToFacebookPage, publishToInstagram } from "../platformPublisher";
 import { refreshPageToken } from "../facebookOAuth";
 
 /**
@@ -58,79 +58,73 @@ async function claimScheduledPost(): Promise<PublishingContext | null> {
   try {
     const db = await getDb();
     if (!db) return null;
-    const result = await db.transaction(async (tx) => {
-      // Find ONE post ready to publish (status = scheduled, scheduledAt <= now, not in retry window)
-      const now = new Date();
-      const nowISO = now.toISOString();
-      const bufferTime = new Date(now.getTime() + 15 * 60 * 1000).toISOString();
-      
-      // Helper: Convert EDT stored time to UTC
-      const convertStoredTimeToUTC = (storedTimeStr: string): string => {
-        const date = new Date(storedTimeStr);
-        const utcDate = new Date(date.getTime() + 4 * 60 * 60 * 1000);
-        return utcDate.toISOString();
-      };
-      
-      console.log(`[PW] Checking posts at ${nowISO} (with 15min buffer)`);
-      
-      // Get all scheduled posts and filter in JavaScript
-      const allScheduledPosts = await tx.select().from(scheduledPosts).where(
+    
+    // Find ONE post ready to publish (status = scheduled, scheduledAt <= now, not in retry window)
+    const now = new Date();
+    const nowISO = now.toISOString();
+    const bufferTime = new Date(now.getTime() + 15 * 60 * 1000).toISOString();
+    
+    console.log(`[PW] Checking posts at ${nowISO} (with 15min buffer)`);
+    
+    // Get all scheduled posts and filter in JavaScript
+    const allScheduledPosts = await db.select().from(scheduledPosts).where(
+      eq(scheduledPosts.status, "scheduled")
+    ).limit(10);
+    
+    // Frontend already converted to UTC, so stored time is UTC
+    // Database stores as string without timezone: "2026-04-15 07:17:00"
+    // We need to parse it as UTC by adding Z suffix
+    const readyPosts = allScheduledPosts.filter(p => {
+      // Parse the stored time as UTC by adding Z suffix
+      const storedDateStr = p.scheduledAt;
+      const utcDateStr = storedDateStr.includes('T') ? storedDateStr : storedDateStr.replace(' ', 'T');
+      const utcDate = new Date(utcDateStr + 'Z');
+      const utcTime = utcDate.toISOString();
+      const isReady = utcTime <= bufferTime && (p.nextRetryAt === null || p.nextRetryAt <= nowISO);
+      console.log(`[PW] Post ${p.id}: Stored=${p.scheduledAt}, Parsed=${utcDateStr}Z, UTC=${utcTime}, Ready=${isReady}`);
+      return isReady;
+    }).slice(0, 1);
+
+    if (!readyPosts.length) {
+      const upcoming = await db.select().from(scheduledPosts).where(
         eq(scheduledPosts.status, "scheduled")
-      ).limit(10);
-      
-      // Frontend already converted to UTC, so stored time is UTC
-      // Just compare directly without applying offset again
-      const readyPosts = allScheduledPosts.filter(p => {
-        const storedDate = new Date(p.scheduledAt);
-        const utcTime = storedDate.toISOString();
-        const isReady = utcTime <= bufferTime && (p.nextRetryAt === null || p.nextRetryAt <= nowISO);
-        console.log(`[PW] Post ${p.id}: Stored=${p.scheduledAt}, UTC=${utcTime}, Ready=${isReady}`);
-        return isReady;
-      }).slice(0, 1);
-
-      if (!readyPosts.length) {
-        const upcoming = await tx.select().from(scheduledPosts).where(
-          eq(scheduledPosts.status, "scheduled")
-        ).limit(1);
-        if (upcoming.length > 0) {
-          const p = upcoming[0];
-          const storedTime = new Date(p.scheduledAt);
-          const diff = storedTime.getTime() - now.getTime();
-          console.log(`[PW] Next post ID ${p.id}:`);
-          console.log(`[PW]   Stored: ${p.scheduledAt}`);
-          console.log(`[PW]   Parsed as: ${storedTime.toISOString()}`);
-          console.log(`[PW]   Current UTC: ${nowISO}`);
-          console.log(`[PW]   Difference: ${Math.round(diff/1000)}s away`);
-          console.log(`[PW]   Buffer time: ${bufferTime}`);
-        }
-        return null;
+      ).limit(1);
+      if (upcoming.length > 0) {
+        const p = upcoming[0];
+        const storedTime = new Date(p.scheduledAt);
+        const diff = storedTime.getTime() - now.getTime();
+        console.log(`[PW] Next post ID ${p.id}:`);
+        console.log(`[PW]   Stored: ${p.scheduledAt}`);
+        console.log(`[PW]   Parsed as: ${storedTime.toISOString()}`);
+        console.log(`[PW]   Current UTC: ${nowISO}`);
+        console.log(`[PW]   Difference: ${Math.round(diff/1000)}s away`);
+        console.log(`[PW]   Buffer time: ${bufferTime}`);
       }
+      return null;
+    }
 
-      const post = readyPosts[0];
+    const post = readyPosts[0];
 
-      // ATOMIC: Update to "publishing" in same transaction
-      // This prevents other workers from claiming the same job
-      await tx
-        .update(scheduledPosts)
-        .set({
-          status: "publishing",
-          publishingStartedAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(scheduledPosts.id, post.id));
+    // Update to "publishing" status
+    // This prevents other workers from claiming the same job
+    await db
+      .update(scheduledPosts)
+      .set({
+        status: "publishing",
+        publishingStartedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(scheduledPosts.id, post.id));
 
-      return {
-        scheduledPostId: post.id,
-        postId: post.postId,
-        userId: post.scheduledById,
-        connectionId: post.connectionId,
-        platform: post.platform as "facebook" | "instagram" | "tiktok",
-        pageId: post.pageId || undefined,
-        scheduledAt: new Date(post.scheduledAt),
-      };
-    });
-
-    return result;
+    return {
+      scheduledPostId: post.id,
+      postId: post.postId,
+      userId: post.scheduledById,
+      connectionId: post.connectionId,
+      platform: post.platform as "facebook" | "instagram" | "tiktok",
+      pageId: post.pageId || undefined,
+      scheduledAt: new Date(post.scheduledAt),
+    };
   } catch (error) {
     console.error("[PublishingWorker] Error claiming job:", {
       error: error instanceof Error ? error.message : String(error),
@@ -252,7 +246,23 @@ async function publishScheduledPost(context: PublishingContext): Promise<void> {
       }
     }
 
-    // Step 3: Publish to platform
+    // Step 3: Check if already published (prevent duplicates on retry)
+    // Only skip if this is a retry (retryCount > 0) AND we have a remotePostId
+    if (post.retryCount > 0 && post.remotePostId) {
+      console.log(`[PublishingWorker] Post ${context.postId} already published (retry #${post.retryCount}). Skipping duplicate publish.`);
+      // Mark as published and return
+      await db
+        .update(scheduledPosts)
+        .set({
+          status: "published",
+          publishedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(scheduledPosts.id, context.scheduledPostId));
+      return;
+    }
+
+    // Step 4: Publish to platform
     let result: PublishResult;
 
     if (context.platform === "facebook") {
@@ -261,24 +271,24 @@ async function publishScheduledPost(context: PublishingContext): Promise<void> {
         pageId: context.pageId || connection.accountId || "",
       });
     } else if (context.platform === "instagram") {
-      // TODO: Implement Instagram publishing
-      result = {
-        success: false,
-        errorMessage: "Instagram publishing not yet implemented",
-        errorCode: "NOT_IMPLEMENTED",
-      };
+      // Instagram publishing via Facebook Graph API (Instagram is owned by Meta)
+      result = await publishToInstagram(post, {
+        accessToken: accessToken,
+        accountId: context.pageId || connection.accountId || "",
+      });
     } else if (context.platform === "tiktok") {
-      // TODO: Implement TikTok publishing
+      // TikTok publishing not yet implemented
       result = {
         success: false,
         errorMessage: "TikTok publishing not yet implemented",
         errorCode: "NOT_IMPLEMENTED",
+        isRetryable: false,
       };
     } else {
       throw new Error(`Unknown platform: ${context.platform}`);
     }
 
-    // Step 4: Handle result
+    // Step 5: Handle result
     if (result.success && result.platformPostId) {
       // SUCCESS: Mark as published
       await updatePublishingJob(jobId, {
