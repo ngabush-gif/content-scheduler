@@ -381,6 +381,15 @@ export async function getPlatformConnectionById(connectionId: number, userId: nu
   return result[0];
 }
 
+export async function markConnectionAsExpired(connectionId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db
+    .update(platformConnections)
+    .set({ isActive: 0 })
+    .where(eq(platformConnections.id, connectionId));
+}
+
 // ─── Publish Log ───────────────────────────────────────────────────────────────
 
 export async function addPublishLog(data: {
