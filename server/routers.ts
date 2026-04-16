@@ -50,6 +50,49 @@ import { generateAIImage, uploadMediaFile, validateUploadedFile } from "./imageH
 import { scheduleRouter } from "./scheduleRouter";
 import { connectionsRouter } from "./connectionsRouter";
 
+// ─── Hashtag utilities ────────────────────────────────────────────────────────
+/**
+ * Extract hashtags from text - returns exactly 5
+ */
+function extractHashtags(text: string): string[] {
+  if (!text) return [];
+  const hashtagRegex = /#[a-zA-Z0-9_]+/g;
+  const found = text.match(hashtagRegex) || [];
+  const deduped = Array.from(new Set(found.map(h => h.toLowerCase())));
+  return deduped.slice(0, 5);
+}
+
+/**
+ * Remove hashtags from text
+ */
+function removeHashtags(text: string): string {
+  if (!text) return '';
+  return text
+    .split('\n')
+    .filter(line => !/^\s*#[a-zA-Z0-9_\s]*$/.test(line))
+    .join('\n')
+    .replace(/#[a-zA-Z0-9_]+/g, '')
+    .trim();
+}
+
+/**
+ * Ensure exactly 5 hashtags
+ */
+function normalizeHashtags(hashtags: string | string[] | undefined): string {
+  if (!hashtags) return '';
+  let tags: string[] = [];
+  if (typeof hashtags === 'string') {
+    tags = extractHashtags(hashtags);
+  } else if (Array.isArray(hashtags)) {
+    tags = hashtags.map(h => h.toLowerCase().startsWith('#') ? h : `#${h}`);
+  }
+  tags = tags.slice(0, 5);
+  while (tags.length < 5) {
+    tags.push(`#tag${tags.length + 1}`);
+  }
+  return tags.join(' ');
+}
+
 // ─── Admin guard ──────────────────────────────────────────────────────────────
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (ctx.user.role !== "admin") {
@@ -127,8 +170,12 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
+        const cleanCaption = input.caption ? removeHashtags(input.caption) : undefined;
+        const normalizedHashtags = normalizeHashtags(input.hashtags);
         const dbData = {
           ...input,
+          caption: cleanCaption,
+          hashtags: normalizedHashtags,
           authorId: ctx.user.id,
           status: "approved" as const,
           aiGeneratedImage: input.aiGeneratedImage ? 1 : (input.aiGeneratedImage === false ? 0 : undefined),
@@ -192,9 +239,12 @@ export const appRouter = router({
           throw new TRPCError({ code: "FORBIDDEN" });
         }
         const { id, ...data } = input;
-        // Convert boolean to number for database
+        const cleanCaption = data.caption ? removeHashtags(data.caption) : undefined;
+        const normalizedHashtags = data.hashtags ? normalizeHashtags(data.hashtags) : undefined;
         const dbData = {
           ...data,
+          caption: cleanCaption !== undefined ? cleanCaption : data.caption,
+          hashtags: normalizedHashtags !== undefined ? normalizedHashtags : data.hashtags,
           aiGeneratedImage: data.aiGeneratedImage ? 1 : (data.aiGeneratedImage === false ? 0 : undefined),
         };
         await updateContentPost(id, dbData);

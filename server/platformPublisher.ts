@@ -24,11 +24,27 @@ export interface PostContent {
 /** Build the final text body to publish from a post */
 function buildPostText(post: PostContent): string {
   const parts: string[] = [];
-  if (post.caption) parts.push(post.caption);
-  else if (post.fullContent) parts.push(post.fullContent);
-  else if (post.script) parts.push(post.script);
-  else parts.push(post.title);
-  if (post.hashtags) parts.push("\n\n" + post.hashtags);
+  
+  // Add caption (required)
+  if (post.caption) {
+    parts.push(post.caption);
+  } else if (post.fullContent) {
+    parts.push(post.fullContent);
+  } else if (post.script) {
+    parts.push(post.script);
+  } else {
+    parts.push(post.title);
+  }
+  
+  // Add hashtags (required - always append)
+  if (post.hashtags) {
+    parts.push("\n\n" + post.hashtags);
+  } else {
+    // Fallback: if no hashtags, add default ones
+    console.warn('[buildPostText] No hashtags provided for post:', post.title);
+    parts.push("\n\n#ContentCreator #SocialMedia #Engagement #OnlineBusiness #Success");
+  }
+  
   return parts.join("").trim();
 }
 
