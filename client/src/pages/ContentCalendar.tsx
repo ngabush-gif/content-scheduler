@@ -276,7 +276,7 @@ function CalendarContent() {
                 <option value="">Select connection...</option>
                 {connections?.map((conn: any) => (
                   <option key={conn.id} value={conn.id}>
-                    {conn.name} {conn.isActive ? '' : '(Inactive)'}
+                    {conn.pageName || conn.name || `Connection ${conn.id}`} {conn.isActive ? '' : '(Inactive)'}
                   </option>
                 ))}
               </select>
