@@ -104,13 +104,51 @@ export async function updateUserRole(userId: number, role: "user" | "admin") {
 export async function createContentPost(data: InsertContentPost) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
-  const { id, ...dataWithoutId } = data as any;
-  await db.insert(contentPosts).values(dataWithoutId);
-  const result = await db.select().from(contentPosts)
-    .where(eq(contentPosts.authorId, dataWithoutId.authorId))
-    .orderBy(desc(contentPosts.createdAt))
-    .limit(1);
-  return result[0];
+  
+  // Build clean insert payload - only include fields that should be inserted
+  const insertPayload: any = {
+    authorId: data.authorId,
+    title: data.title,
+    niche: data.niche,
+    platform: data.platform,
+    contentType: data.contentType,
+    status: data.status || 'draft',
+  };
+  
+  // Add optional fields only if they're defined
+  if (data.caption !== undefined) insertPayload.caption = data.caption;
+  if (data.hashtags !== undefined) insertPayload.hashtags = data.hashtags;
+  if (data.imagePrompt !== undefined) insertPayload.imagePrompt = data.imagePrompt;
+  if (data.script !== undefined) insertPayload.script = data.script;
+  if (data.ideas !== undefined) insertPayload.ideas = data.ideas;
+  if (data.fullContent !== undefined) insertPayload.fullContent = data.fullContent;
+  if (data.tone !== undefined) insertPayload.tone = data.tone;
+  if (data.tags !== undefined) insertPayload.tags = data.tags;
+  if (data.imageUrl !== undefined) insertPayload.imageUrl = data.imageUrl;
+  if (data.aiGeneratedImage !== undefined) insertPayload.aiGeneratedImage = data.aiGeneratedImage;
+  if (data.mediaType !== undefined) insertPayload.mediaType = data.mediaType;
+  if (data.contentStyle !== undefined) insertPayload.contentStyle = data.contentStyle;
+  
+  console.log('[createContentPost] INSERT PAYLOAD:', JSON.stringify(insertPayload, null, 2));
+  
+  try {
+    // Insert without id field - Drizzle should auto-generate it
+    await db.insert(contentPosts).values(insertPayload as any);
+    console.log('[createContentPost] INSERT QUERY EXECUTED');
+    
+    // Query the inserted row
+    const result = await db.select().from(contentPosts)
+      .where(eq(contentPosts.authorId, insertPayload.authorId))
+      .orderBy(desc(contentPosts.createdAt))
+      .limit(1);
+    
+    console.log('[createContentPost] INSERT SUCCESS - Returned row id:', result[0]?.id);
+    console.log('[createContentPost] FULL ROW:', JSON.stringify(result[0], null, 2));
+    return result[0];
+  } catch (error) {
+    console.error('[createContentPost] INSERT FAILED - Error:', error);
+    throw error;
+  }
 }
 
 export async function getContentPostById(id: number) {
