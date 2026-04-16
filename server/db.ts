@@ -85,15 +85,32 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   console.log("[upsertUser] Final insert values:", JSON.stringify(values, null, 2));
   console.log("[upsertUser] Final update set:", JSON.stringify(updateSet, null, 2));
 
+  // Check if user already exists by openId
+  try {
+    const existingUser = await db.select().from(users).where(eq(users.openId, user.openId)).limit(1);
+    
+    if (existingUser.length > 0) {
+      console.log("[upsertUser] User already exists with openId:", user.openId, "- updating instead of inserting");
+      // User exists, just update them
+      await db.update(users).set(updateSet).where(eq(users.openId, user.openId));
+      console.log("[upsertUser] Updated existing user with openId:", user.openId);
+      return;
+    }
+  } catch (checkError) {
+    console.error("[upsertUser] Error checking for existing user:", checkError);
+    // Continue with insert if check fails
+  }
+
   // Explicitly exclude id field - it should be auto-generated
   const { id, ...valuesWithoutId } = values as any;
   console.log("[upsertUser] Values without id:", JSON.stringify(valuesWithoutId, null, 2));
 
   try {
-    await db.insert(users).values(valuesWithoutId).onDuplicateKeyUpdate({ set: updateSet });
-    console.log("[upsertUser] Upsert successful for openId:", user.openId);
+    console.log("[upsertUser] Inserting new user with openId:", user.openId);
+    await db.insert(users).values(valuesWithoutId);
+    console.log("[upsertUser] Insert successful for openId:", user.openId);
   } catch (error) {
-    console.error("[upsertUser] Upsert failed for openId:", user.openId);
+    console.error("[upsertUser] Insert failed for openId:", user.openId);
     console.error("[upsertUser] Error:", error);
     console.error("[upsertUser] Error message:", error instanceof Error ? error.message : String(error));
     console.error("[upsertUser] Error stack:", error instanceof Error ? error.stack : "no stack");
