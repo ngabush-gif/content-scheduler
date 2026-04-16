@@ -33,36 +33,37 @@ function MyContentView() {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const isAdmin = user?.role === "admin";
 
-  const [selectedStatus, setSelectedStatus] = useState<string>("all");
-  const { data: posts, isLoading } = trpc.content.list.useQuery({
-    status: selectedStatus === "all" ? undefined : (selectedStatus as "pending" | "approved" | "rejected"),
-  });
+  const { data: posts, isLoading, refetch } = trpc.content.list.useQuery(
+    isAdmin ? { status: filterStatus === "all" ? undefined : filterStatus } : { myOnly: true }
+  );
 
   const utils = trpc.useUtils();
 
   const submitMutation = trpc.content.submitForReview.useMutation({
-    onSuccess: () => { utils.content.list.invalidate(); toast.success("Post submitted for review"); },
-    onError: (e: any) => toast.error(e.message),
+    onSuccess: () => { utils.content.list.invalidate(); toast.success("Submitted for review!"); },
+    onError: (e) => toast.error(e.message),
   });
 
   const deleteMutation = trpc.content.delete.useMutation({
     onSuccess: () => { utils.content.list.invalidate(); toast.success("Post deleted"); setSelectedPost(null); },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e) => toast.error(e.message),
   });
 
-  // saveToLibrary feature removed - not needed for current flow
+  const saveToLibraryMutation = trpc.content.saveToLibrary.useMutation({
+    onSuccess: () => { utils.content.list.invalidate(); toast.success("Saved to library!"); },
+    onError: (e) => toast.error(e.message),
+  });
 
   const statusFilters = [
     { value: "all", label: "All" },
-    { value: "pending", label: "Pending" },
+    { value: "draft", label: "Draft" },
+    { value: "pending_review", label: "Pending" },
     { value: "approved", label: "Approved" },
     { value: "rejected", label: "Rejected" },
+    { value: "published", label: "Published" },
   ];
 
-  // Filter posts based on selected status
-  const filteredPosts = selectedStatus === "all" 
-    ? (posts ?? [])
-    : (posts ?? []).filter((p: any) => p.status === selectedStatus);
+  const filteredPosts = posts ?? [];
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
@@ -170,7 +171,15 @@ function MyContentView() {
                             <Send className="w-3.5 h-3.5" />
                           </button>
                         )}
-
+                        {post.status === "approved" && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); saveToLibraryMutation.mutate({ id: post.id }); }}
+                            className="p-1.5 rounded-lg hover:bg-green-400/10 text-green-400/60 hover:text-green-400 transition-colors"
+                            title="Save to library"
+                          >
+                            <BookOpen className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </CardContent>
@@ -191,7 +200,7 @@ function MyContentView() {
               post={selectedPost}
               onSubmit={() => submitMutation.mutate({ id: selectedPost.id })}
               onDelete={() => deleteMutation.mutate({ id: selectedPost.id })}
-              onSaveToLibrary={() => {}}
+              onSaveToLibrary={() => saveToLibraryMutation.mutate({ id: selectedPost.id })}
               isSubmitting={submitMutation.isPending}
               isDeleting={deleteMutation.isPending}
             />
@@ -205,7 +214,7 @@ function MyContentView() {
 function PostDetail({ post, onSubmit, onDelete, onSaveToLibrary, isSubmitting, isDeleting }: any) {
   const niche = NICHES.find((n) => n.id === post.niche);
   const statusCfg = STATUS_CONFIG[post.status as keyof typeof STATUS_CONFIG];
-  // Approval history removed - not needed for current flow
+  const { data: history } = trpc.content.approvalHistory.useQuery({ postId: post.id });
 
   return (
     <div className="space-y-4">
@@ -322,7 +331,28 @@ function PostDetail({ post, onSubmit, onDelete, onSaveToLibrary, isSubmitting, i
         </div>
       )}
 
-      {/* Approval History - Removed */}
+      {/* Approval History */}
+      {history && history.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">History</p>
+          <div className="space-y-2">
+            {history.map((h: any) => (
+              <div key={h.id} className="flex items-start gap-2 text-xs">
+                <div className={`w-2 h-2 rounded-full mt-1 shrink-0 ${
+                  h.action === "approved" ? "bg-green-400" :
+                  h.action === "rejected" ? "bg-red-400" :
+                  "bg-primary/60"
+                }`} />
+                <div>
+                  <span className="font-medium capitalize">{h.action.replace("_", " ")}</span>
+                  {h.note && <span className="text-muted-foreground ml-1">— {h.note}</span>}
+                  <span className="text-muted-foreground/60 ml-2">{new Date(h.createdAt).toLocaleString()}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex flex-wrap gap-2 pt-2 border-t border-border/50">

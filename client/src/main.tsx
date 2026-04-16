@@ -37,30 +37,10 @@ queryClient.getMutationCache().subscribe(event => {
   }
 });
 
-// Determine backend URL based on environment
-const getBackendUrl = () => {
-  if (typeof window === 'undefined') return '/api/trpc';
-  
-  // In production, use the full backend URL to bypass CloudFront caching issues
-  const protocol = window.location.protocol;
-  const hostname = window.location.hostname;
-  const port = window.location.port;
-  
-  // For dev environment (localhost:5173 or similar), use relative path
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    return '/api/trpc';
-  }
-  
-  // For production, construct full backend URL
-  // The backend runs on the same host but we need to explicitly specify the path
-  const backendUrl = `${protocol}//${hostname}${port ? ':' + port : ''}/api/trpc`;
-  return backendUrl;
-};
-
 const trpcClient = trpc.createClient({
   links: [
     httpBatchLink({
-      url: getBackendUrl(),
+      url: "/api/trpc",
       transformer: superjson,
       fetch(input, init) {
         return globalThis.fetch(input, {

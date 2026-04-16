@@ -15,15 +15,11 @@ import {
   getConnectionWithCredentials,
   getPlatformConnectionById,
   markInviteCodeAsUsed,
-  getDb,
 } from "./db";
-import { eq } from "drizzle-orm";
-import { users } from "../drizzle/schema";
 import { publishToFacebook, publishToInstagram, publishToTikTok } from "./platformPublisher";
 import { generateAIImage, uploadMediaFile, validateUploadedFile } from "./imageHandler";
 import { scheduleRouter } from "./scheduleRouter";
 import { connectionsRouter } from "./connectionsRouter";
-
 
 // ─── Hashtag utilities ────────────────────────────────────────────────────────
 /**
@@ -275,71 +271,6 @@ export const appRouter = router({
         await updateContentPost(input.id, { status: 'pending_review' });
         return { success: true };
       }),
-    publish: protectedProcedure
-      .input(z.object({ id: z.number(), connectionId: z.number() }))
-      .mutation(async ({ ctx, input }) => {
-        console.log(`[content.publish] Starting publish for post: ${input.id}`);
-        
-        const post = await getContentPostById(input.id);
-        if (!post) throw new TRPCError({ code: "NOT_FOUND" });
-        if (ctx.user.role !== "admin" && post.authorId !== ctx.user.id) {
-          throw new TRPCError({ code: "FORBIDDEN" });
-        }
-
-        // Get connection with credentials
-        const connection = await getConnectionWithCredentials(input.connectionId);
-        if (!connection) throw new TRPCError({ code: "NOT_FOUND", message: "Connection not found" });
-        
-        // Validate that connection has required credentials
-        if (!connection.accessToken) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "Connection is missing access token. Please reconnect your account." });
-        }
-        if (!connection.accountId) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "Connection is missing account ID. Please reconnect your account." });
-        }
-
-        console.log(`[content.publish] Publishing to platform: ${connection.platform}`);
-        console.log(`[content.publish] Page/Account ID: ${connection.accountId}`);
-
-        try {
-          // Publish based on platform
-          let result;
-          // After validation above, we know accessToken and accountId are not null
-          const validatedConnection = connection as typeof connection & { accessToken: string; accountId: string };
-          
-          if (connection.platform === 'facebook') {
-            result = await publishToFacebook(post, validatedConnection);
-          } else if (connection.platform === 'instagram') {
-            result = await publishToInstagram(post, validatedConnection);
-          } else if (connection.platform === 'tiktok') {
-            result = await publishToTikTok(post, validatedConnection);
-          } else {
-            throw new TRPCError({ code: "BAD_REQUEST", message: `Unsupported platform: ${connection.platform}` });
-          }
-
-          // Update post with remote ID and status
-          await updateContentPost(input.id, {
-            status: 'published',
-            remotePostId: result.remotePostId,
-            publishedAt: new Date().toISOString(),
-          });
-
-          console.log(`[content.publish] Publish succeeded! Remote post ID: ${result.remotePostId}`);
-          return { success: true, remotePostId: result.remotePostId };
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          console.log(`[content.publish] Publish failed: ${errorMessage}`);
-          
-          // Update post with error status
-          await updateContentPost(input.id, {
-            status: 'failed',
-            lastError: errorMessage,
-          });
-
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: errorMessage });
-        }
-      }),
-
   }),
 
   // ─── Admin Approval ───────────────────────────────────────────────────────
@@ -532,39 +463,6 @@ IMPORTANT:
       ctx.res?.clearCookie("session");
       return { success: true };
     }),
-  }),
-
-  // ─── Settings ───────────────────────────────────────────────────────────────
-  settings: router({
-    toggleAutoPublish: protectedProcedure
-      .input(z.object({ enabled: z.boolean() }))
-      .mutation(async ({ ctx, input }) => {
-        const db = await getDb();
-        if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database unavailable' });
-        
-        await db
-          .update(users)
-          .set({ autoPublishAfterGenerate: input.enabled ? 1 : 0 })
-          .where(eq(users.id, ctx.user.id));
-        
-        return { success: true, enabled: input.enabled };
-      }),
-
-    getSettings: protectedProcedure
-      .query(async ({ ctx }) => {
-        const db = await getDb();
-        if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database unavailable' });
-        
-        const result = await db
-          .select({ autoPublishAfterGenerate: users.autoPublishAfterGenerate })
-          .from(users)
-          .where(eq(users.id, ctx.user.id))
-          .limit(1);
-        
-        return {
-          autoPublishAfterGenerate: result[0]?.autoPublishAfterGenerate === 1 || false,
-        };
-      }),
   }),
 
   // ─── Approval Workflow ───────────────────────────────────────────────────────

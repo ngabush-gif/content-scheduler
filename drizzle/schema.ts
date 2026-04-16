@@ -166,11 +166,11 @@ export const users = mysqlTable("users", {
 	email: varchar({ length: 320 }),
 	loginMethod: varchar({ length: 64 }),
 	role: mysqlEnum(['user','admin']).default('user').notNull(),
-	autoPublishAfterGenerate: tinyint().default(0).notNull(),
 	createdAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
 	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
 	lastSignedIn: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
 	avatarUrl: text(),
-}, (table) => [
+},
+(table) => [
 	index("users_openId_unique").on(table.openId),
 ]);

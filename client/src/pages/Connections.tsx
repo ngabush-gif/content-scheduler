@@ -8,16 +8,9 @@ import { AlertCircle, CheckCircle, Loader2, Trash2, RefreshCw } from "lucide-rea
 export default function Connections() {
   const { user } = useAuth();
   const [isConnecting, setIsConnecting] = useState(false);
-  const [isConnectingInstagram, setIsConnectingInstagram] = useState(false);
 
   // Get Facebook auth URL
   const getFacebookAuthUrl = trpc.connections.getFacebookAuthUrl.useQuery(
-    { state: user?.id.toString() || "" },
-    { enabled: !!user }
-  );
-
-  // Get Instagram auth URL
-  const getInstagramAuthUrl = trpc.connections.getInstagramAuthUrl.useQuery(
     { state: user?.id.toString() || "" },
     { enabled: !!user }
   );
@@ -27,54 +20,20 @@ export default function Connections() {
     enabled: !!user,
   });
 
-  // Get connected Instagram accounts
-  const instagramConnections = trpc.connections.getInstagramConnections.useQuery(undefined, {
-    enabled: !!user,
-  });
-
-  // Facebook disconnect mutation
+  // Disconnect mutation
   const disconnectMutation = trpc.connections.disconnectFacebook.useMutation({
     onSuccess: () => {
       facebookConnections.refetch();
     },
   });
 
-  // Instagram disconnect mutation
-  const disconnectInstagramMutation = trpc.connections.disconnectInstagram.useMutation({
-    onSuccess: () => {
-      instagramConnections.refetch();
-    },
-  });
-
-  // Facebook reconnect mutation
-  const reconnectMutation = trpc.connections.reconnectFacebook.useMutation({
-    onSuccess: (data) => {
-      if (data.authUrl) {
-        window.location.href = data.authUrl;
-      }
-    },
-  });
-
-  // Instagram reconnect mutation
-  const reconnectInstagramMutation = trpc.connections.reconnectInstagram.useMutation({
-    onSuccess: (data) => {
-      if (data.authUrl) {
-        window.location.href = data.authUrl;
-      }
-    },
-  });
+  // Reconnect mutation
+  const reconnectMutation = trpc.connections.reconnectFacebook.useMutation();
 
   const handleConnectFacebook = () => {
     if (getFacebookAuthUrl.data?.url) {
       setIsConnecting(true);
       window.location.href = getFacebookAuthUrl.data.url;
-    }
-  };
-
-  const handleConnectInstagram = () => {
-    if (getInstagramAuthUrl.data?.url) {
-      setIsConnectingInstagram(true);
-      window.location.href = getInstagramAuthUrl.data.url;
     }
   };
 
@@ -84,20 +43,8 @@ export default function Connections() {
     }
   };
 
-  const handleDisconnectInstagram = (connectionId: number) => {
-    if (confirm("Are you sure you want to disconnect this Instagram account?")) {
-      disconnectInstagramMutation.mutate({ connectionId });
-    }
-  };
-
   const handleReconnect = (connectionId: number) => {
-    setIsConnecting(true);
     reconnectMutation.mutate({ connectionId });
-  };
-
-  const handleReconnectInstagram = (connectionId: number) => {
-    setIsConnectingInstagram(true);
-    reconnectInstagramMutation.mutate({ connectionId });
   };
 
   if (!user) {
@@ -204,108 +151,15 @@ export default function Connections() {
         </CardContent>
       </Card>
 
-      {/* Instagram Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <img src="https://www.instagram.com/favicon.ico" alt="Instagram" className="w-5 h-5" />
-            Instagram Accounts
-          </CardTitle>
-          <CardDescription>Connect your Instagram Business accounts to publish posts directly.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Connected Accounts */}
-          {instagramConnections.data && instagramConnections.data.length > 0 && (
-            <div className="space-y-3">
-              <h3 className="font-semibold text-sm">Connected Accounts</h3>
-              {instagramConnections.data.map((connection) => (
-                <div
-                  key={connection.id}
-                  className="flex items-center justify-between p-3 bg-gray-900 rounded-lg border border-gray-800"
-                >
-                  <div className="flex items-center gap-3 flex-1">
-                    {connection.isValid ? (
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                    ) : (
-                      <AlertCircle className="w-5 h-5 text-yellow-500" />
-                    )}
-                    <div className="flex-1">
-                      <p className="font-medium">@{connection.accountName}</p>
-                      <p className="text-xs text-gray-400">
-                        {connection.isValid ? "Active" : "Token expired - requires reconnection"}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    {!connection.isValid && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleReconnectInstagram(connection.id)}
-                        disabled={reconnectInstagramMutation.isPending}
-                      >
-                        {reconnectInstagramMutation.isPending ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <RefreshCw className="w-4 h-4" />
-                        )}
-                        Reconnect
-                      </Button>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => handleDisconnectInstagram(connection.id)}
-                      disabled={disconnectInstagramMutation.isPending}
-                    >
-                      {disconnectInstagramMutation.isPending ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-4 h-4" />
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Connect Button */}
-          <Button
-            onClick={handleConnectInstagram}
-            disabled={isConnectingInstagram || getInstagramAuthUrl.isLoading}
-            className="w-full"
-          >
-            {isConnectingInstagram || getInstagramAuthUrl.isLoading ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Connecting...
-              </>
-            ) : (
-              <>
-                <img src="https://www.instagram.com/favicon.ico" alt="Instagram" className="w-4 h-4 mr-2" />
-                Connect Instagram Account
-              </>
-            )}
-          </Button>
-
-          {instagramConnections.data?.length === 0 && (
-            <p className="text-sm text-gray-400 text-center py-4">
-              No Instagram accounts connected yet. Click the button above to connect.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
       {/* Info Box */}
       <Card className="bg-blue-950 border-blue-800">
         <CardHeader>
           <CardTitle className="text-blue-200">How it works</CardTitle>
         </CardHeader>
         <CardContent className="text-blue-100 text-sm space-y-2">
-          <p>1. Click "Connect Facebook Page" or "Connect Instagram Account" to authorize our app</p>
-          <p>2. Select the account you want to connect</p>
-          <p>3. Your account will appear in the list above</p>
+          <p>1. Click "Connect Facebook Page" to authorize our app</p>
+          <p>2. Select the Facebook Page you want to connect</p>
+          <p>3. Your page will appear in the list above</p>
           <p>4. Go to the Calendar to schedule posts for automatic publishing</p>
         </CardContent>
       </Card>

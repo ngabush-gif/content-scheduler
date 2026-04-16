@@ -1,1 +1,0 @@
-ALTER TABLE `users` ADD `autoPublishAfterGenerate` tinyint DEFAULT 0 NOT NULL;

@@ -51,9 +51,6 @@ function GeneratorContent() {
 
   const utils = trpc.useUtils();
 
-  // Fetch user's auto-publish setting
-  const { data: settings } = trpc.settings.getSettings.useQuery();
-
   const generateMutation = trpc.generate.content.useMutation({
     onSuccess: (data) => {
       try {
@@ -131,33 +128,11 @@ function GeneratorContent() {
     },
   });
 
-  const publishMutation = trpc.content.publish.useMutation({
-    onSuccess: (data) => {
-      utils.content.list.invalidate();
-      toast.success("Content published automatically!");
-      setLocation("/my-content");
-    },
-    onError: (err) => {
-      console.error('[auto-publish] Error:', err);
-      toast.error("Auto-publish failed: " + err.message);
-    },
-  });
-
   const createPostMutation = trpc.content.create.useMutation({
     onSuccess: (data) => {
-      const postId = (data as any)?.id ?? null;
-      setSavedPostId(postId);
+      setSavedPostId((data as any)?.id ?? null);
       utils.content.list.invalidate();
-      
-      // Check if auto-publish is enabled
-      if (settings?.autoPublishAfterGenerate && postId) {
-        toast.loading("Auto-publishing to connected platforms...");
-        // Get the first active connection (for now, publish to first available)
-        // In future, this could publish to all connected platforms
-        publishMutation.mutate({ id: postId, connectionId: 1 });
-      } else {
-        toast.success("Content saved as draft!");
-      }
+      toast.success("Content saved as draft!");
     },
     onError: (err) => toast.error("Save failed: " + err.message),
   });
@@ -170,9 +145,6 @@ function GeneratorContent() {
     },
     onError: (err) => toast.error(err.message),
   });
-
-  // Disable submit button if auto-publish is enabled (content goes straight to published)
-  const isAutoPublishEnabled = settings?.autoPublishAfterGenerate;
 
   const niche = NICHES.find((n) => n.id === selectedNiche);
 

@@ -22,36 +22,7 @@
 export interface PublishResult {
   success: boolean;
   platformPostId?: string;
-  remotePostId?: string;
   errorMessage?: string;
-}
-
-/**
- * Validate Instagram token by making a test API call
- * Returns true if token is valid, false if expired or invalid
- */
-export async function validateInstagramToken(accessToken: string, accountId: string): Promise<boolean> {
-  try {
-    const res = await fetch(
-      `https://graph.instagram.com/v21.0/${accountId}?fields=id,name&access_token=${accessToken}`,
-      { method: 'GET' }
-    );
-    
-    if (res.status === 401 || res.status === 400) {
-      console.log('[validateInstagramToken] Token expired (401/400)');
-      return false;
-    }
-    
-    const data = await res.json() as any;
-    if (data.error) {
-      console.log('[validateInstagramToken] Token error:', data.error.code, data.error.message);
-      return false;
-    }
-    return true;
-  } catch (e) {
-    console.error('[validateInstagramToken] Exception:', e);
-    return false;
-  }
 }
 
 export interface PostContent {
@@ -123,18 +94,6 @@ export async function publishToInstagram(
   try {
     const text = buildPostText(post);
     const { accessToken, accountId } = credentials;
-
-    // Validate token before attempting to publish
-    console.log('[publishToInstagram] Validating token before publish...');
-    const isTokenValid = await validateInstagramToken(accessToken, accountId);
-    if (!isTokenValid) {
-      console.error('[publishToInstagram] Token validation failed - token is expired or invalid');
-      return {
-        success: false,
-        errorMessage: 'TOKEN_EXPIRED: Instagram access token is invalid or expired. Please reconnect your account.',
-      };
-    }
-    console.log('[publishToInstagram] Token validation passed');
 
     // Step 1: Create media container
     // Instagram requires an image for feed posts.

@@ -122,138 +122,162 @@
 - [x] Posts show in calendar with correct AEST times
 - [x] Publishing worker running and monitoring for scheduled posts
 
-## Direct Publishing & Auto-Publish MVP (COMPLETED)
+## Direct Publishing MVP (IN PROGRESS)
 
-### Phase 1: Schema Updates ✅
-- [x] Update `content_posts` table with remotePostId, lastError fields
-- [x] Update status enum to include 'failed' status
-- [x] Generate and apply Drizzle migration
+### Phase 1: Schema Updates
+- [x] Update `scheduledPosts` table with new fields (connectionId, pageId, provider, retryCount, nextRetryAt, lastError, remotePostId, publishedAt)
+- [x] Update status enum to include "publishing", "reconnect_required"
+- [x] Generate Drizzle migration
+- [ ] Apply migration to database (use webdev_execute_sql with drizzle/0007_migration.sql)
 - [x] Update TypeScript types in schema.ts
-- [x] Create database helper functions in db.ts
+- [ ] Create database helper functions in db.ts
 
-### Phase 2: Publishing Worker ✅
-- [x] Create `server/jobs/publishingWorker.ts` with atomic job claiming
-- [x] Implement atomic compare-and-swap locking
-- [x] Add retry logic with exponential backoff
-- [x] Create error handling utilities
-- [x] Implement provider dispatch (Facebook, Instagram, TikTok)
-- [x] Add comprehensive logging for job execution
-- [x] Prevent duplicate publishing with atomic job claiming
-- [x] Add idempotency check: skip if remotePostId exists or status=published
-- [x] Persist remotePostId immediately on successful publish
-- [x] Prevent retries after successful publishing
+### Phase 2: Publishing Worker
+- [ ] Create `server/jobs/publishingWorker.ts` with atomic job claiming - NEEDS TESTING
+- [ ] Implement atomic compare-and-swap locking (UPDATE with WHERE status=scheduled) - IMPLEMENTED, NEEDS VERIFICATION
+- [ ] Add retry logic with exponential backoff
+- [ ] Create error handling utilities (error codes, retry decisions)
+- [ ] Implement provider dispatch (Facebook, Instagram, TikTok) - FACEBOOK/INSTAGRAM DONE, TIKTOK STUBBED
+- [ ] Add logging for job execution
+- [ ] FIX: Prevent duplicate publishing with atomic job claiming - IN PROGRESS
+- [ ] Remove 14-hour offset workaround from publishing worker (Luxon now handles timezone)
+- [ ] Add idempotency check: skip if remotePostId exists or status=published
+- [ ] Persist remotePostId immediately on successful publish
+- [ ] Prevent retries after successful publishing
+- [ ] Test duplicate publishing prevention with concurrent workers
 
-### Phase 3: Provider Publishing Functions ✅
-- [x] Implement `publishToFacebook()` with text and hashtags
-- [x] Implement `publishToInstagram()` with token validation
-- [x] Implement `publishToTikTok()` stub
+### Phase 3: Provider Publishing Functions
+- [x] Update `publishToFacebookPage()` to support direct binary image upload (Option B)
+- [x] Implement image fetch from URL (S3, CDN, Manus API)
+- [x] FIX: Replace object_attachment with attached_media to prevent share/wrapper posts
+- [x] Ensure native page posts with proper insights (not share-style wrappers)
+- [x] Implement multipart form data upload to Facebook's /{page-id}/photos endpoint
+- [x] Implement object_attachment parameter for feed post creation
+- [x] Add graceful fallback: if image upload fails, post still publishes with text only
 - [x] Add comprehensive error handling and logging
-- [x] Add token expiration detection and connection marking
+- [x] Create 9 unit and E2E tests for Facebook image upload feature - all passing (platformPublisher.test.ts + e2e-image-publishing.test.ts)
+- [ ] Implement `publishToInstagram()` with image support
+- [ ] Implement `publishToTikTok()` with video support
+- [ ] Test with real API credentials
 
-### Phase 4: tRPC Endpoints ✅
-- [x] Create `content.publish` endpoint (immediate publish)
-- [x] Add connection credential validation
-- [x] Add comprehensive error handling
+### Phase 4: tRPC Endpoints
+- [x] Create `schedule.create` endpoint (queue post for later)
+- [ ] Create `schedule.publish` endpoint (immediate publish) - SCOPE: Deferred, use schedule.create with immediate time instead
+- [x] Create `schedule.retry` endpoint (manual retry for failed jobs)
+- [x] Create `schedule.cancel` endpoint (cancel scheduled post)
+- [x] Create `schedule.list` endpoint (get scheduled posts with status)
+- [x] Add server-side 5-minute future buffer validation in schedule.create
+- [x] Validate connectionId belongs to user and matches platform/page
+- [x] Add comprehensive error handling and validation to schedule endpoints
 
-### Phase 5: Auto-Publish Feature ✅
-- [x] Add `autoPublishAfterGenerate` column to users table
-- [x] Create settings router with toggle procedures
-- [x] Build Settings page with UI toggle control
-- [x] Implement auto-publish logic in ContentGenerator
-- [x] Auto-approve and auto-publish on content generation
+### Phase 5: Frontend Updates
+- [ ] Remove `window.open()` from Publishing.tsx
+- [ ] Remove copy-to-clipboard modal
+- [ ] Update ContentCalendar.tsx to show job statuses
+- [ ] Add status badges (scheduled, publishing, published, failed, reconnect_required)
+- [ ] Add retry countdown display
+- [ ] Add "Reconnect Required" message with link to reconnect
+- [ ] Add manual retry button for failed jobs
+- [ ] Update Publishing page to use new tRPC endpoints
 
-### Phase 6: CloudFront 403 Fix ✅
-- [x] Implement `getBackendUrl()` function for full backend URL
-- [x] Use relative path for localhost dev environment
-- [x] Use full URL for production to bypass CloudFront caching
-- [x] Add connection credential validation before publishing
-- [x] Add type casting for validated connections
+### Phase 6: Database Helpers
+- [ ] Create `getScheduledPostsReadyToPublish()` helper - NEEDS INTEGRATION with publishing worker
+- [ ] Create `claimScheduledPost()` helper with atomic locking - NEEDS INTEGRATION with publishing worker
+- [ ] Create `updateScheduledPostStatus()` helper - NEEDS DEDICATED HELPER (not just updateScheduledPost)
+- [ ] Create `createPublishingJob()` helper - SCOPE: Deferred, use scheduled_posts table directly
+- [ ] Create `getConnectionWithCredentials()` helper - NEEDS INTEGRATION with publishing worker
+- [ ] Create `getMultiplePages()` helper for Facebook - SCOPE: Deferred, use single connection for now
 
-### Phase 7: UI/UX Improvements ✅
-- [x] Add publish success view in MyContent modal
-- [x] Show status badge (Published Successfully)
-- [x] Display published timestamp
-- [x] Show remotePostId
-- [x] Add "View on Facebook" button with direct link
-- [x] Show error messages for failed publishes
+### Phase 7: Testing
+- [ ] Write unit tests for atomic job claiming
+- [ ] Write unit tests for retry logic
+- [ ] Write unit tests for error handling
+- [ ] Write integration tests for Facebook publishing
+- [ ] Write integration tests for Instagram publishing
+- [ ] Write integration tests for TikTok publishing
+- [ ] Manual end-to-end testing with real accounts
 
-### Phase 8: Testing & Documentation ✅
-- [x] Test Facebook publish end-to-end (success)
-- [x] Test Instagram publish with token validation (expired token detected)
-- [x] Verify remotePostId saved correctly
-- [x] Verify status transitions (draft → approved → published)
-- [x] Verify error handling and lastError population
-- [x] Document Facebook publish flow
+### Phase 8: Documentation & Cleanup
+- [ ] Update SCHEDULER_AUDIT.md with implementation details
+- [ ] Document error codes and recovery strategies
+- [ ] Document retry backoff strategy
+- [ ] Remove old Publishing page code
+- [ ] Add comments to publishingWorker.ts
+- [ ] Create checkpoint
 
-## Remaining High-Priority Items
-
-### Instagram Token Refresh (COMPLETED)
-- [x] Implement Instagram OAuth flow with token exchange
-- [x] Add Instagram OAuth procedures to connections router
-- [x] Add Instagram OAuth callback route to Express server
-- [x] Update Connections page with Instagram OAuth UI
-- [x] Token validation before publish (already implemented)
-- [ ] Test Instagram publish end-to-end with valid token (implementation ready, needs valid credentials)
-- [ ] Verify post appears on Instagram (implementation ready, needs valid credentials)
-
-### Basic Scheduling (COMPLETED)
-- [x] Implement date/time picker for scheduled publishing (Luxon timezone refactoring)
-- [x] Create publishing queue for scheduled posts (publishing worker with atomic job claiming)
-- [x] Test scheduling and automatic publishing (verified on Samsung S25 Chrome)
-
-### Low-Priority Items (Can Be Done Later)
-- [ ] TikTok publishing implementation
-- [ ] Advanced scheduling with calendar view
-- [ ] Publishing analytics and engagement tracking
-- [ ] Team collaboration features
-- [ ] Multi-language content generation
-- [ ] Video content support
+### Phase 9: Deployment
+- [ ] Test in staging environment
+- [ ] Verify worker process starts correctly
+- [ ] Monitor job execution logs
+- [ ] Test error scenarios (expired token, rate limit, etc.)
+- [ ] Deploy to production
 
 
-## CloudFront 403 Error - FIXED ✅
-- [x] Diagnose CloudFront routing configuration (root cause: catch-all route intercepting /api/*)
-- [x] Identify why /api/* requests return 403 error (serveStatic() catch-all was sending index.html)
-- [x] Implement fix for API routing in production (modified serveStatic to skip /api/* routes)
-- [x] Test core API endpoints on published domain (verified: /api/trpc/auth.me, /api/oauth/facebook/callback, /api/oauth/instagram/callback all working)
-- [x] Verify OAuth callbacks work on production (verified: both Facebook and Instagram callbacks return proper redirects, no 403 errors)
-- [ ] Verify publishing works on production (implementation ready, needs end-to-end test with valid credentials)
+## Facebook OAuth Connection Flow (NEW)
+
+### Phase 1: Backend OAuth Endpoints
+- [ ] Create tRPC endpoint: connections.getFacebookAuthUrl (returns Facebook OAuth URL)
+- [ ] Create tRPC endpoint: connections.handleFacebookCallback (exchanges code for token)
+- [ ] Implement Facebook Graph API client
+- [ ] Fetch user's Facebook pages from Graph API
+- [ ] Get page access token for each page
+
+### Phase 2: Database Storage
+- [ ] Verify platform_connections table has all required fields (pageId, pageName, accessToken)
+- [ ] Create database helper: saveFacebookConnection()
+- [ ] Create database helper: getFacebookConnections()
+- [ ] Create database helper: deleteFacebookConnection()
+
+### Phase 3: Frontend UI
+- [ ] Create Connections page component
+- [ ] Add "Connect Facebook" button
+- [ ] Handle Facebook OAuth callback redirect
+- [ ] Show list of connected pages
+- [ ] Add disconnect button
+
+### Phase 4: Testing
+- [ ] Test Facebook OAuth flow end-to-end
+- [ ] Verify token storage
+- [ ] Verify page list fetching
+- [ ] Run Test 1: Schedule and publish with real connection
 
 
-## OAuth Callback Debugging - ROOT CAUSE FIXED
-- [x] Examine OAuth callback route implementation (Facebook and Instagram)
-- [x] Check session/authentication state in callback handler
-- [x] Verify state parameter creation, storage, and validation (found: state not JSON encoded)
-- [x] Check cookie/session preservation across signup → OAuth callback flow (not reached due to state parsing error)
-- [x] Add detailed error logging to callback handlers (improved error messages)
-- [x] Test callback end-to-end and identify first failure point (state parameter not JSON encoded)
-- [x] Fix the identified issue (now encodes state as JSON object {userId: 123})
-- [ ] Test callback end-to-end after publishing and verify it works with actual OAuth flow
+## Facebook Publishing Reliability Hardening (IN PROGRESS)
 
+### Phase 1: Retry Logic & Timeout Protection
+- [x] Implement max 2 retries for failed publishes
+- [x] Add exponential backoff (60s, 120s, 240s)
+- [x] Add 30-second timeout per publish attempt
+- [x] Auto-mark jobs stuck in "publishing" for >2 minutes as "failed"
+- [x] Log every publish attempt with timestamp and result
+- [ ] Test retry logic with network failures
 
-## OAuth Security & Session Issues - FIXED
-- [x] Verify authenticated user session exists inside Facebook/Instagram callback routes (added session verification)
-- [x] Add logging to callback: raw state, parsed state, session cookie, resolved user (added detailed logging)
-- [x] Prevent attaching platform accounts without valid authenticated session (now blocks if no session)
-- [x] Replace client-supplied userId in state with server-verified session binding (validates state userId matches authenticated user)
-- [x] Validate state parameter signature or use secure session-based state storage (now verifies state userId matches authenticated user ID)
-- [ ] Test full signup → connect platform → callback flow end-to-end on production
-- [ ] Capture actual callback logs to verify session/user resolution works
+### Phase 2: Status & Recovery
+- [x] Verify all jobs end in: scheduled, publishing, published, or failed
+- [x] Ensure lastError is always populated on failure
+- [x] Add manual retry button for failed jobs (in UI)
+- [x] Add cancel/delete button for scheduled jobs (in UI)
+- [ ] Test status transitions with multiple scenarios
 
+### Phase 3: Facebook Production Cleanup
+- [ ] Identify and remove legacy broken posts from failed publish logic
+- [ ] Verify remotePostId is saved for all successful publishes
+- [ ] Check for duplicate publishes across multiple scheduled jobs
+- [ ] Audit database for orphaned or stuck jobs
+- [ ] Clean up test posts from development
 
-## Facebook OAuth Redirect URI - FIXED
-- [x] Identify hardcoded redirect URI mismatch (was 'your-app.manus.space', should be 'contenthub-zayg9ao8.manus.space')
-- [x] Update FACEBOOK_REDIRECT_URI environment variable
-- [x] Restart dev server with new configuration
-- [ ] Test Facebook OAuth callback end-to-end
-- [ ] Verify user can sign in via Facebook and reach dashboard
-- [ ] Verify Facebook connection is saved to database
+### Phase 4: UI/UX Improvements
+- [x] Add clear status badges (Scheduled, Publishing, Published, Failed)
+- [ ] Show connection/page name in post list
+- [x] Show published timestamp for successful posts
+- [x] Show failed reason inline with error details
+- [x] Add retry/cancel buttons with confirmation dialogs
+- [x] Improve visual hierarchy and readability
 
-## Manus OAuth Callback Sign-In - CRITICAL BUG
-- [ ] Trace Manus OAuth callback flow and identify upsert failure
-- [ ] Log exact upsert payload and database error details
-- [ ] Identify which unique key is conflicting (openId, email, etc.)
-- [ ] Fix upsert logic to match existing email users correctly
-- [ ] Add safe error handling without exposing SQL errors to browser
-- [ ] Test Manus sign-in callback end-to-end
-- [ ] Verify existing email users can sign in via Manus OAuth
-- [ ] Verify new users are created correctly via Manus OAuth
+### Phase 5: Testing & Documentation
+- [ ] Run reliability test with 5+ posts at staggered times
+- [ ] Verify no duplicates across all posts
+- [ ] Verify no stuck jobs in "publishing" state
+- [ ] Verify correct status transitions (scheduled → publishing → published)
+- [ ] Document Facebook publishing flow and safeguards
+- [ ] Create runbook for troubleshooting failed posts

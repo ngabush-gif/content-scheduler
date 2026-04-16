@@ -49,55 +49,35 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   const db = await getDb();
   if (!db) return;
 
-  console.log("[upsertUser] Starting upsert with openId:", user.openId);
-  console.log("[upsertUser] User data:", JSON.stringify(user, null, 2));
-
-  // Build values object
   const values: InsertUser = { openId: user.openId };
-  
+  const updateSet: Record<string, unknown> = {};
+
   const textFields = ["name", "email", "loginMethod"] as const;
   for (const field of textFields) {
     const value = user[field];
-    if (value !== undefined) {
-      values[field] = value ?? null;
-    }
+    if (value === undefined) continue;
+    const normalized = value ?? null;
+    values[field] = normalized;
+    updateSet[field] = normalized;
   }
 
   if (user.lastSignedIn !== undefined) {
     values.lastSignedIn = user.lastSignedIn;
+    updateSet.lastSignedIn = user.lastSignedIn;
   }
-  
   if (user.role !== undefined) {
     values.role = user.role;
+    updateSet.role = user.role;
   } else {
+    // All users are admins - everyone can publish their own content independently
     values.role = "admin";
+    updateSet.role = "admin";
   }
 
-  if (!values.lastSignedIn) {
-    values.lastSignedIn = new Date().toISOString();
-  }
+  if (!values.lastSignedIn) values.lastSignedIn = new Date().toISOString();
+  if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date().toISOString();
 
-  console.log("[upsertUser] Final values:", JSON.stringify(values, null, 2));
-
-  try {
-    // Use raw SQL for upsert to avoid Drizzle ORM issues
-    const result = await db.execute(
-      sql`INSERT INTO users (openId, name, email, loginMethod, role, lastSignedIn, autoPublishAfterGenerate)
-          VALUES (${values.openId}, ${values.name || null}, ${values.email || null}, ${values.loginMethod || null}, ${values.role}, ${values.lastSignedIn}, 0)
-          ON DUPLICATE KEY UPDATE
-          name = VALUES(name),
-          email = VALUES(email),
-          loginMethod = VALUES(loginMethod),
-          lastSignedIn = VALUES(lastSignedIn)`
-    );
-    console.log("[upsertUser] Upsert successful for openId:", user.openId);
-  } catch (error) {
-    console.error("[upsertUser] Upsert failed for openId:", user.openId);
-    console.error("[upsertUser] Error:", error);
-    console.error("[upsertUser] Error message:", error instanceof Error ? error.message : String(error));
-    console.error("[upsertUser] Error stack:", error instanceof Error ? error.stack : "no stack");
-    throw error;
-  }
+  await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
 }
 
 export async function getUserByOpenId(openId: string) {
@@ -288,17 +268,24 @@ export async function createScheduledPost(data: InsertScheduledPost): Promise<{ 
   return { id: (result as any)[0]?.id || 0 };
 }
 
-export async function getScheduledPostsByAuthor(authorId: number) {
+export async function getScheduledPosts(userIdOrFilters?: number | { status?: string; from?: Date; to?: Date }) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(scheduledPosts).where(eq(scheduledPosts.scheduledById, authorId)).orderBy(desc(scheduledPosts.scheduledAt));
-}
+  const conditions = [];
+  if (typeof userIdOrFilters === 'number') {
+    conditions.push(eq(scheduledPosts.scheduledById, userIdOrFilters));
+  } else if (userIdOrFilters) {
+    const filters = userIdOrFilters;
+    if (filters.status) conditions.push(eq(scheduledPosts.status, filters.status as any));
+    if (filters.from) conditions.push(gte(scheduledPosts.scheduledAt, filters.from.toISOString()));
+    if (filters.to) conditions.push(lte(scheduledPosts.scheduledAt, filters.to.toISOString()));
+  }
 
-export async function getScheduledPostById(id: number) {
-  const db = await getDb();
-  if (!db) return undefined;
-  const result = await db.select().from(scheduledPosts).where(eq(scheduledPosts.id, id)).limit(1);
-  return result[0];
+  const query = db.select().from(scheduledPosts);
+  if (conditions.length > 0) {
+    return query.where(and(...conditions)).orderBy(scheduledPosts.scheduledAt);
+  }
+  return query.orderBy(scheduledPosts.scheduledAt);
 }
 
 export async function updateScheduledPost(id: number, data: Partial<InsertScheduledPost>) {
@@ -313,139 +300,384 @@ export async function deleteScheduledPost(id: number) {
   await db.delete(scheduledPosts).where(eq(scheduledPosts.id, id));
 }
 
-// Get posts scheduled for publishing within a time range
-export async function getScheduledPostsForPublishing(now: Date, futureMinutes: number = 5) {
-  const db = await getDb();
-  if (!db) return [];
-  
-  const futureTime = new Date(now.getTime() + futureMinutes * 60 * 1000);
-  return db.select().from(scheduledPosts)
-    .where(
-      and(
-        gte(scheduledPosts.scheduledAt, now.toISOString()),
-        lte(scheduledPosts.scheduledAt, futureTime.toISOString()),
-        eq(scheduledPosts.status, 'scheduled')
-      )
-    )
-    .orderBy(scheduledPosts.scheduledAt);
-}
+// ─── Platform Connections ──────────────────────────────────────────────────────
 
-// ─── Platform Connections ─────────────────────────────────────────────────────
-
-export async function createPlatformConnection(data: any) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  const result = await db.insert(platformConnections).values(data).$returningId();
-  return { id: (result as any)[0]?.id || 0 };
-}
-
-export async function getPlatformConnectionsByUserId(userId: number) {
+export async function getPlatformConnections(userId: number) {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(platformConnections).where(eq(platformConnections.userId, userId));
 }
 
-export async function getPlatformConnectionById(id: number, userId?: number) {
+export async function upsertPlatformConnection(data: {
+  userId: number;
+  platform: "facebook" | "instagram" | "tiktok";
+  accountName?: string;
+  accountId?: string;
+  accessToken?: string;
+  pageId?: string;
+  isActive?: boolean;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const existing = await db
+    .select()
+    .from(platformConnections)
+    .where(and(eq(platformConnections.userId, data.userId), eq(platformConnections.platform, data.platform)))
+    .limit(1);
+
+  const updateData: Record<string, unknown> = {
+    accountName: data.accountName,
+    accountId: data.accountId,
+    isActive: data.isActive ?? true,
+  };
+  if (data.accessToken !== undefined) updateData.accessToken = data.accessToken;
+  if (data.pageId !== undefined) updateData.accountId = data.pageId; // reuse accountId for pageId
+
+  if (existing.length > 0) {
+    await db
+      .update(platformConnections)
+      .set(updateData)
+      .where(eq(platformConnections.id, existing[0].id));
+  } else {
+    await db.insert(platformConnections).values({
+      userId: data.userId,
+      platform: data.platform,
+      accountName: data.accountName,
+      accountId: data.pageId ?? data.accountId,
+      accessToken: data.accessToken,
+      isActive: (data.isActive ?? true) ? 1 : 0,
+    });
+  }
+}
+
+export async function disconnectPlatform(userId: number, platform: "facebook" | "instagram" | "tiktok") {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db
+    .update(platformConnections)
+    .set({ isActive: 0, accessToken: null, accountId: null })
+    .where(and(eq(platformConnections.userId, userId), eq(platformConnections.platform, platform)));
+}
+
+export async function getPlatformConnectionWithToken(userId: number, platform: "facebook" | "instagram" | "tiktok") {
   const db = await getDb();
   if (!db) return undefined;
-  const conditions = [eq(platformConnections.id, id)];
-  if (userId !== undefined) {
-    conditions.push(eq(platformConnections.userId, userId));
-  }
-  const result = await db.select().from(platformConnections).where(and(...conditions)).limit(1);
+  const result = await db
+    .select()
+    .from(platformConnections)
+    .where(and(eq(platformConnections.userId, userId), eq(platformConnections.platform, platform), eq(platformConnections.isActive, 1)))
+    .limit(1);
   return result[0];
 }
 
-export async function updatePlatformConnection(id: number, data: any) {
+export async function getPlatformConnectionById(connectionId: number, userId: number) {
   const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  await db.update(platformConnections).set(data).where(eq(platformConnections.id, id));
+  if (!db) return undefined;
+  const result = await db
+    .select()
+    .from(platformConnections)
+    .where(and(eq(platformConnections.id, connectionId), eq(platformConnections.userId, userId)))
+    .limit(1);
+  return result[0];
 }
 
-export async function deletePlatformConnection(id: number) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  await db.delete(platformConnections).where(eq(platformConnections.id, id));
-}
+// ─── Publish Log ───────────────────────────────────────────────────────────────
 
-// ─── Publish Log ──────────────────────────────────────────────────────────────
-
-export async function addPublishLog(data: any) {
+export async function addPublishLog(data: {
+  postId: number;
+  publishedById: number;
+  platform: "facebook" | "instagram" | "tiktok";
+  status: "success" | "failed";
+  platformPostId?: string;
+  errorMessage?: string;
+}) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   await db.insert(publishLog).values(data);
 }
 
-export async function getPublishLogByPostId(postId: number) {
+export async function getPublishLog(postId?: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(publishLog).where(eq(publishLog.postId, postId)).orderBy(desc(publishLog.publishedAt));
+  if (postId) {
+    return db.select().from(publishLog).where(eq(publishLog.postId, postId)).orderBy(desc(publishLog.publishedAt));
+  }
+  return db.select().from(publishLog).orderBy(desc(publishLog.publishedAt)).limit(100);
+}
+
+// ─── Analytics ─────────────────────────────────────────────────────────────────
+
+export async function getAnalyticsSummary() {
+  const db = await getDb();
+  if (!db) return null;
+
+  const [totalPosts] = await db.select({ count: sql<number>`count(*)` }).from(contentPosts);
+  const [pendingPosts] = await db.select({ count: sql<number>`count(*)` }).from(contentPosts).where(eq(contentPosts.status, "pending_review"));
+  const [approvedPosts] = await db.select({ count: sql<number>`count(*)` }).from(contentPosts).where(eq(contentPosts.status, "approved"));
+  const [publishedPosts] = await db.select({ count: sql<number>`count(*)` }).from(contentPosts).where(eq(contentPosts.status, "published"));
+  const [totalMembers] = await db.select({ count: sql<number>`count(*)` }).from(users);
+
+  const platformBreakdown = await db
+    .select({ platform: contentPosts.platform, count: sql<number>`count(*)` })
+    .from(contentPosts)
+    .groupBy(contentPosts.platform);
+
+  const nicheBreakdown = await db
+    .select({ niche: contentPosts.niche, count: sql<number>`count(*)` })
+    .from(contentPosts)
+    .groupBy(contentPosts.niche);
+
+  const recentActivity = await db
+    .select()
+    .from(contentPosts)
+    .orderBy(desc(contentPosts.updatedAt))
+    .limit(10);
+
+  return {
+    totalPosts: Number(totalPosts?.count ?? 0),
+    pendingPosts: Number(pendingPosts?.count ?? 0),
+    approvedPosts: Number(approvedPosts?.count ?? 0),
+    publishedPosts: Number(publishedPosts?.count ?? 0),
+    totalMembers: Number(totalMembers?.count ?? 0),
+    platformBreakdown,
+    nicheBreakdown,
+    recentActivity,
+  };
 }
 
 // ─── Content Templates ────────────────────────────────────────────────────────
 
-export async function createContentTemplate(data: InsertContentTemplate) {
+export async function createTemplate(data: InsertContentTemplate) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
-  const result = await db.insert(contentTemplates).values(data).$returningId();
-  return { id: (result as any)[0]?.id || 0 };
+  const result = await db.insert(contentTemplates).values(data);
+  return result;
 }
 
-export async function getContentTemplatesByCreator(createdById: number) {
+export async function getTemplatesByNiche(niche: string) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(contentTemplates).where(eq(contentTemplates.createdById, createdById)).orderBy(desc(contentTemplates.createdAt));
+  return db.select().from(contentTemplates).where(eq(contentTemplates.niche, niche as any)).orderBy(contentTemplates.category);
 }
 
-export async function getDefaultContentTemplates() {
+export async function getAllTemplates() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(contentTemplates).where(eq(contentTemplates.isDefault, 1)).orderBy(desc(contentTemplates.createdAt));
+  return db.select().from(contentTemplates).orderBy(contentTemplates.niche, contentTemplates.category);
 }
 
-export async function deleteContentTemplate(id: number) {
+export async function getDefaultTemplates() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(contentTemplates).where(eq(contentTemplates.isDefault, 1)).orderBy(contentTemplates.niche, contentTemplates.category);
+}
+
+export async function updateTemplate(id: number, data: Partial<InsertContentTemplate>) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(contentTemplates).set(data).where(eq(contentTemplates.id, id));
+}
+
+export async function deleteTemplate(id: number) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   await db.delete(contentTemplates).where(eq(contentTemplates.id, id));
 }
 
-// ─── Invite Codes ─────────────────────────────────────────────────────────────
-
-export async function createInviteCode(data: InsertInviteCode) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  const result = await db.insert(inviteCodes).values(data).$returningId();
-  return { id: (result as any)[0]?.id || 0 };
-}
-
-export async function getInviteCodeByCode(code: string) {
+export async function getTemplate(id: number) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(inviteCodes).where(eq(inviteCodes.code, code)).limit(1);
+  const result = await db.select().from(contentTemplates).where(eq(contentTemplates.id, id)).limit(1);
   return result[0];
 }
 
-export async function markInviteCodeAsUsed(codeId: number, usedBy: number) {
+
+// ─── Social Connections (Per-User Credentials) ─────────────────────────────────
+
+export async function getSocialConnections(userId: number) {
   const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  await db.update(inviteCodes).set({ usedBy, usedAt: new Date().toISOString() }).where(eq(inviteCodes.id, codeId));
+  if (!db) return [];
+  return db.select().from(socialConnections).where(eq(socialConnections.userId, userId));
 }
 
-
-// Alias for backward compatibility
-export async function getScheduledPosts(authorId: number) {
-  return getScheduledPostsByAuthor(authorId);
-}
-
-export async function getConnectionWithCredentials(connectionId: number) {
-  return getPlatformConnectionById(connectionId);
-}
-
-export async function getPlatformConnectionWithToken(userId: number, platform: string) {
+export async function getSocialConnectionByPlatform(userId: number, platform: "facebook" | "instagram" | "tiktok") {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(platformConnections)
-    .where(and(eq(platformConnections.userId, userId), eq(platformConnections.platform, platform as any)))
+  const result = await db
+    .select()
+    .from(socialConnections)
+    .where(and(eq(socialConnections.userId, userId), eq(socialConnections.platform, platform), eq(socialConnections.isActive, 1)))
+    .limit(1);
+  return result[0];
+}
+
+export async function saveSocialConnection(data: InsertSocialConnection) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  
+  // Check if connection already exists
+  const existing = await db
+    .select()
+    .from(socialConnections)
+    .where(and(eq(socialConnections.userId, data.userId), eq(socialConnections.platform, data.platform)))
+    .limit(1);
+
+  if (existing.length > 0) {
+    // Update existing connection
+    await db
+      .update(socialConnections)
+      .set({
+        accessToken: data.accessToken,
+        platformUserId: data.platformUserId,
+        platformUsername: data.platformUsername,
+        isActive: 1,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(socialConnections.id, existing[0].id));
+  } else {
+    // Insert new connection
+    await db.insert(socialConnections).values(data);
+  }
+}
+
+export async function deleteSocialConnection(userId: number, platform: "facebook" | "instagram" | "tiktok") {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db
+    .delete(socialConnections)
+    .where(and(eq(socialConnections.userId, userId), eq(socialConnections.platform, platform)));
+}
+
+
+// ─── Invite Codes ─────────────────────────────────────────────────────────────
+
+export async function generateInviteCode(createdBy: number): Promise<string> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  
+  // Generate a random 8-character code
+  const code = Math.random().toString(36).substring(2, 10).toUpperCase();
+  
+  await db.insert(inviteCodes).values({
+    code,
+    createdBy,
+        isActive: 1,
+      });
+  
+  return code;
+}
+
+export async function listInviteCodes(createdBy: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  
+  return db
+    .select()
+    .from(inviteCodes)
+    .where(eq(inviteCodes.createdBy, createdBy))
+    .orderBy(desc(inviteCodes.createdAt));
+}
+
+export async function validateInviteCode(code: string) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  
+  const result = await db
+    .select()
+    .from(inviteCodes)
+    .where(
+      and(
+        eq(inviteCodes.code, code),
+        eq(inviteCodes.isActive, 1)
+      )
+    )
+    .limit(1);
+  
+  return result[0] || null;
+}
+
+export async function markInviteCodeAsUsed(code: string, usedBy: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  
+  await db
+    .update(inviteCodes)
+    .set({
+      usedBy,
+      usedAt: new Date().toISOString(),
+    })
+    .where(eq(inviteCodes.code, code));
+}
+
+export async function revokeInviteCode(code: string) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  
+  await db
+    .update(inviteCodes)
+    .set({ isActive: 0 })
+    .where(eq(inviteCodes.code, code));
+}
+
+/**
+ * Get scheduled posts ready to publish (status = 'scheduled' and scheduledAt <= now)
+ */
+export async function getScheduledPostsReadyToPublish() {
+  const db = await getDb();
+  if (!db) return [];
+  const now = new Date().toISOString();
+  return db
+    .select()
+    .from(scheduledPosts)
+    .where(
+      and(
+        eq(scheduledPosts.status, 'scheduled' as any),
+        lte(scheduledPosts.scheduledAt, now)
+      )
+    )
+    .orderBy(scheduledPosts.scheduledAt);
+}
+
+/**
+ * Claim a scheduled post for publishing (atomic operation)
+ * Returns the post if successfully claimed, null if already claimed
+ */
+export async function claimScheduledPost(postId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  
+  // Update status to 'publishing' atomically
+  const result = await db
+    .update(scheduledPosts)
+    .set({ status: 'publishing' as any, updatedAt: new Date().toISOString() })
+    .where(and(
+      eq(scheduledPosts.id, postId),
+      eq(scheduledPosts.status, 'scheduled' as any)
+    ));
+  
+  // If no rows were updated, the post was already claimed
+  if ((result as any).rowsAffected === 0) return null;
+  
+  // Fetch and return the claimed post
+  const posts = await db
+    .select()
+    .from(scheduledPosts)
+    .where(eq(scheduledPosts.id, postId))
+    .limit(1);
+  
+  return posts[0] || null;
+}
+
+/**
+ * Get connection with credentials for publishing
+ */
+export async function getConnectionWithCredentials(connectionId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db
+    .select()
+    .from(platformConnections)
+    .where(eq(platformConnections.id, connectionId))
     .limit(1);
   return result[0];
 }
