@@ -275,6 +275,60 @@ export const appRouter = router({
         await updateContentPost(input.id, { status: 'pending_review' });
         return { success: true };
       }),
+    publish: protectedProcedure
+      .input(z.object({ id: z.number(), connectionId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        console.log(`[content.publish] Starting publish for post: ${input.id}`);
+        
+        const post = await getContentPostById(input.id);
+        if (!post) throw new TRPCError({ code: "NOT_FOUND" });
+        if (ctx.user.role !== "admin" && post.authorId !== ctx.user.id) {
+          throw new TRPCError({ code: "FORBIDDEN" });
+        }
+
+        // Get connection with credentials
+        const connection = await getConnectionWithCredentials(input.connectionId, ctx.user.id);
+        if (!connection) throw new TRPCError({ code: "NOT_FOUND", message: "Connection not found" });
+
+        console.log(`[content.publish] Publishing to platform: ${connection.platform}`);
+        console.log(`[content.publish] Page/Account ID: ${connection.accountId}`);
+
+        try {
+          // Publish based on platform
+          let result;
+          if (connection.platform === 'facebook') {
+            result = await publishToFacebook(post, connection);
+          } else if (connection.platform === 'instagram') {
+            result = await publishToInstagram(post, connection);
+          } else if (connection.platform === 'tiktok') {
+            result = await publishToTikTok(post, connection);
+          } else {
+            throw new TRPCError({ code: "BAD_REQUEST", message: `Unsupported platform: ${connection.platform}` });
+          }
+
+          // Update post with remote ID and status
+          await updateContentPost(input.id, {
+            status: 'published',
+            remotePostId: result.remotePostId,
+            publishedAt: new Date().toISOString(),
+          });
+
+          console.log(`[content.publish] Publish succeeded! Remote post ID: ${result.remotePostId}`);
+          return { success: true, remotePostId: result.remotePostId };
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          console.log(`[content.publish] Publish failed: ${errorMessage}`);
+          
+          // Update post with error status
+          await updateContentPost(input.id, {
+            status: 'failed',
+            lastError: errorMessage,
+          });
+
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: errorMessage });
+        }
+      }),
+
   }),
 
   // ─── Admin Approval ───────────────────────────────────────────────────────

@@ -22,6 +22,7 @@
 export interface PublishResult {
   success: boolean;
   platformPostId?: string;
+  remotePostId?: string;
   errorMessage?: string;
 }
 
