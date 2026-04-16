@@ -1,4 +1,3 @@
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -73,12 +72,16 @@ function CalendarContent() {
   });
 
   const handleSchedule = () => {
-    if (!scheduleModal?.post || !selectedDateTime) {
-      toast.error("Please select a date and time");
+    if (!scheduleModal?.post) {
+      toast.error("Please select a post to schedule");
       return;
     }
     if (!selectedConnectionId) {
       toast.error("Please select a platform connection");
+      return;
+    }
+    if (!selectedDateTime) {
+      toast.error("Please select a date and time");
       return;
     }
     
@@ -181,43 +184,64 @@ function CalendarContent() {
             <p className="text-gray-500">No scheduled posts</p>
           ) : (
             <div className="space-y-3">
-              {scheduledPosts.map((post: any) => (
-                <div key={post.id} className="flex items-center justify-between p-3 border rounded-lg">
-                  <div className="flex items-center gap-3 flex-1">
-                    {post.imageUrl && (
-                      <img src={post.imageUrl} alt="" className="w-12 h-12 rounded object-cover" />
-                    )}
-                    <div className="flex-1">
-                      <p className="font-medium">{post.title}</p>
-                      <p className="text-sm text-gray-500">
-                        {post.platform} • {new Date(post.scheduledAt).toLocaleString()}
-                      </p>
+              {scheduledPosts.map((post: any) => {
+                const statusColors: Record<string, string> = {
+                  'scheduled': 'bg-blue-100 text-blue-800',
+                  'publishing': 'bg-yellow-100 text-yellow-800',
+                  'published': 'bg-green-100 text-green-800',
+                  'failed': 'bg-red-100 text-red-800',
+                  'cancelled': 'bg-gray-100 text-gray-800',
+                };
+                const statusColor = statusColors[post.status] || 'bg-gray-100 text-gray-800';
+                
+                return (
+                  <div key={post.id} className="flex flex-col p-3 border rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3 flex-1">
+                        {post.imageUrl && (
+                          <img src={post.imageUrl} alt="" className="w-12 h-12 rounded object-cover" />
+                        )}
+                        <div className="flex-1">
+                          <p className="font-medium">{post.title}</p>
+                          <p className="text-sm text-gray-500">
+                            {post.platform} • {new Date(post.scheduledAt).toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-1 rounded text-xs font-medium whitespace-nowrap ${statusColor}`}>
+                          {post.status.charAt(0).toUpperCase() + post.status.slice(1)}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deleteMutation.mutate({ id: post.id })}
+                          disabled={deleteMutation.isPending}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </div>
+                    {post.status === 'failed' && post.lastError && (
+                      <p className="text-sm text-red-600 mt-2 ml-15">⚠️ Error: {post.lastError}</p>
+                    )}
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => deleteMutation.mutate({ id: post.id })}
-                    disabled={deleteMutation.isPending}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Schedule Modal */}
-      <Dialog open={scheduleModal?.open || false} onOpenChange={(open) => setScheduleModal(open ? { post: null, open: true } : null)}>
-        <DialogContent>
+      {/* Schedule Post Modal */}
+      <Dialog open={scheduleModal?.open ?? false} onOpenChange={(open) => !open && setScheduleModal(null)}>
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Schedule a Post</DialogTitle>
+            <DialogTitle>Schedule Post</DialogTitle>
           </DialogHeader>
-          
+
           <div className="space-y-4">
-            {/* Post Selection */}
+            {/* Select Post */}
             <div>
               <label className="text-sm font-medium">Select Approved Post</label>
               <select
@@ -238,19 +262,27 @@ function CalendarContent() {
 
             {/* Platform Connection */}
             <div>
-              <label className="text-sm font-medium">Platform Connection</label>
+              <label className="text-sm font-medium">
+                Platform Connection
+                {!selectedConnectionId && <span className="text-red-500 ml-1">*</span>}
+              </label>
               <select
-                className="w-full p-2 border rounded mt-1"
+                className={`w-full p-2 border rounded mt-1 ${
+                  !selectedConnectionId && scheduleModal?.open ? 'border-red-500 bg-red-50' : ''
+                }`}
                 value={selectedConnectionId || ""}
-                onChange={(e) => setSelectedConnectionId(parseInt(e.target.value))}
+                onChange={(e) => setSelectedConnectionId(e.target.value ? parseInt(e.target.value) : null)}
               >
                 <option value="">Select connection...</option>
                 {connections?.map((conn: any) => (
                   <option key={conn.id} value={conn.id}>
-                    {conn.name}
+                    {conn.name} {conn.isActive ? '' : '(Inactive)'}
                   </option>
                 ))}
               </select>
+              {!selectedConnectionId && scheduleModal?.open && (
+                <p className="text-red-500 text-sm mt-1">Platform connection is required</p>
+              )}
             </div>
 
             {/* Platform */}
@@ -306,7 +338,7 @@ function CalendarContent() {
               </Button>
               <Button
                 onClick={handleSchedule}
-                disabled={scheduleMutation.isPending}
+                disabled={scheduleMutation.isPending || !selectedConnectionId || !selectedDateTime || !scheduleModal?.post}
                 className="gap-2"
               >
                 {scheduleMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
