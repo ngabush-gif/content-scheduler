@@ -278,6 +278,59 @@ function PostDetail({ post, onSubmit, onDelete, onSaveToLibrary, isSubmitting, i
         </div>
       )}
 
+      {/* Publish Success */}
+      {post.status === "published" && post.remotePostId && (
+        <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1">
+              <p className="text-xs font-semibold text-green-600 mb-1 flex items-center gap-1.5">
+                <CheckCircle className="w-3.5 h-3.5" />
+                Published Successfully
+              </p>
+              <div className="space-y-1.5 text-xs text-green-600/80">
+                {post.publishedAt && (
+                  <p>
+                    <span className="font-medium">Published:</span>{" "}
+                    {new Date(post.publishedAt).toLocaleString()}
+                  </p>
+                )}
+                {post.remotePostId && (
+                  <p>
+                    <span className="font-medium">Post ID:</span> {post.remotePostId}
+                  </p>
+                )}
+              </div>
+            </div>
+            {post.remotePostId && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-green-500/30 text-green-600 hover:bg-green-500/10 gap-2 shrink-0"
+                onClick={() => {
+                  // Extract page ID from remotePostId (format: pageId_postId)
+                  const pageId = post.remotePostId.split("_")[0];
+                  window.open(`https://www.facebook.com/${pageId}/posts/${post.remotePostId}`, "_blank");
+                }}
+              >
+                <Eye className="w-3.5 h-3.5" />
+                View on Facebook
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Publish Error */}
+      {post.status === "failed" && post.lastError && (
+        <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+          <p className="text-xs font-semibold text-destructive mb-1 flex items-center gap-1.5">
+            <XCircle className="w-3.5 h-3.5" />
+            Publish Failed
+          </p>
+          <p className="text-sm text-destructive/80">{post.lastError}</p>
+        </div>
+      )}
+
       {/* Approval History */}
       {history && history.length > 0 && (
         <div>
