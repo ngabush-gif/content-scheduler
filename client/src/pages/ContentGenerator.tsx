@@ -1,6 +1,6 @@
-import DashboardLayout from "@/components/DashboardLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -102,37 +102,93 @@ function GeneratorContent() {
       toast.error("Please add a title for this post");
       return;
     }
+
     const d = generatedContent.data;
-    
-    console.log('\n\n========== FRONTEND SAVE DRAFT ==========');
-    console.log('[handleSaveDraft] Raw LLM output:');
-    console.log('  d.caption:', d.caption?.substring(0, 300));
-    console.log('  d.fullPost:', d.fullPost?.substring(0, 300));
-    console.log('  d.hashtags:', d.hashtags?.substring(0, 200));
-    console.log('  d.fullSet:', d.fullSet?.substring(0, 200));
-    
-    const captionToSend = d.caption || d.fullPost;
-    const hashtagsToSend = d.hashtags || d.fullSet;
-    
-    console.log('[handleSaveDraft] Sending to backend:');
-    console.log('  caption:', captionToSend?.substring(0, 300));
-    console.log('  hashtags:', hashtagsToSend?.substring(0, 200));
-    console.log('========== END FRONTEND SAVE DRAFT ==========\n\n');
-    createPostMutation.mutate({
+
+    console.log("\n\n========== FRONTEND SAVE DRAFT ==========");
+    console.log("[handleSaveDraft] RAW LLM OUTPUT:");
+    console.log(JSON.stringify(d, null, 2));
+
+    // ─── EXPLICIT PARSING & VALIDATION ───
+    let caption = "";
+    let hashtags: string[] = [];
+    let imagePrompt = "";
+
+    try {
+      // Validate caption
+      if (typeof d.caption !== "string") {
+        throw new Error("caption must be a string");
+      }
+      caption = d.caption.trim();
+
+      // Validate hashtags
+      if (!Array.isArray(d.hashtags)) {
+        throw new Error("hashtags must be an array");
+      }
+      if (d.hashtags.length !== 5) {
+        throw new Error(
+          `hashtags must have exactly 5 items, got ${d.hashtags.length}`
+        );
+      }
+      hashtags = d.hashtags.map((tag: string) => {
+        const cleaned = String(tag).replace(/^#+/, "").trim();
+        if (!cleaned) throw new Error("hashtag cannot be empty");
+        return cleaned;
+      });
+
+      // Validate imagePrompt
+      if (typeof d.imagePrompt !== "string") {
+        throw new Error("imagePrompt must be a string");
+      }
+      imagePrompt = d.imagePrompt.trim();
+
+      // Validate caption does NOT contain hashtags
+      if (caption.includes("#")) {
+        throw new Error("caption must not contain hashtags");
+      }
+
+      // Validate caption does NOT contain URLs
+      if (/https?:\/\//.test(caption)) {
+        throw new Error("caption must not contain URLs");
+      }
+    } catch (err) {
+      console.error("[handleSaveDraft] VALIDATION ERROR:", err);
+      toast.error(
+        `Invalid content structure: ${
+          err instanceof Error ? err.message : "Unknown error"
+        }`
+      );
+      return;
+    }
+
+    const payload = {
       title: postTitle,
       niche: selectedNiche,
       platform: selectedPlatform as any,
       contentType: selectedContentType,
-      caption: captionToSend,
-      hashtags: hashtagsToSend,
-      script: d.fullScript,
-      ideas: d.ideas ? JSON.stringify(d.ideas) : undefined,
-      fullContent: d.fullPost || d.fullScript || d.caption,
+      caption,
+      hashtags: hashtags.join(" "),
+      imagePrompt,
       tone: customTone || niche?.tone,
       imageUrl: imageUrl || undefined,
       aiGeneratedImage: isAiGenerated,
-      mediaType: imageUrl ? (imageUrl.includes('video') ? 'video' : 'image') : 'none',
-    })
+      mediaType: imageUrl
+        ? imageUrl.includes("video")
+          ? "video"
+          : "image"
+        : "none",
+    };
+
+    console.log("[handleSaveDraft] PARSED & VALIDATED:");
+    console.log("  caption:", caption.substring(0, 300));
+    console.log("  hashtags:", hashtags);
+    console.log("  imagePrompt:", imagePrompt.substring(0, 300));
+
+    console.log("[handleSaveDraft] FINAL PAYLOAD TO BACKEND:");
+    console.log(JSON.stringify(payload, null, 2));
+    console.log("========== END FRONTEND SAVE DRAFT ==========\n\n");
+
+    createPostMutation.mutate(payload as any);
   };
 
   const handleSubmitForReview = async () => {
@@ -161,152 +217,160 @@ function GeneratorContent() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        {/* Left: Controls */}
-        <div className="lg:col-span-2 space-y-5">
-          {/* Niche Selection */}
-          <Card className="bg-card border-border/50">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold">1. Choose Your Audience</CardTitle>
+      {/* Main Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left: Generator Form */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* 1. Choose Your Audience */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">1. Choose Your Audience</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
-              {NICHES.map((n) => (
+            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {NICHES.map((niche) => (
                 <button
-                  key={n.id}
-                  onClick={() => setSelectedNiche(n.id)}
-                  className={`w-full flex items-start gap-3 p-3 rounded-xl border text-left transition-all ${
-                    selectedNiche === n.id
-                      ? "border-primary/40 bg-primary/8"
-                      : "border-border/40 hover:border-border hover:bg-accent/30"
+                  key={niche.id}
+                  onClick={() => setSelectedNiche(niche.id)}
+                  className={`p-4 rounded-lg border-2 transition-all text-left ${
+                    selectedNiche === niche.id
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/50"
                   }`}
                 >
-                  <span className="text-xl shrink-0 mt-0.5">{n.emoji}</span>
-                  <div className="min-w-0">
-                    <p className={`text-sm font-medium ${selectedNiche === n.id ? "text-primary" : ""}`}>
-                      {n.label}
-                    </p>
-                    <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">{n.description}</p>
+                  <div className="text-2xl mb-2">{niche.emoji}</div>
+                  <div className="font-semibold text-sm">{niche.label}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {niche.description}
                   </div>
-                  {selectedNiche === n.id && (
-                    <CheckCircle className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                  )}
                 </button>
               ))}
             </CardContent>
           </Card>
 
-          {/* Tone info */}
-          {niche && (
-            <Card className="bg-primary/5 border-primary/15">
-              <CardContent className="p-4">
-                <p className="text-xs font-semibold text-primary mb-1">Tone Guide for {niche.label}</p>
-                <p className="text-xs text-muted-foreground leading-relaxed">{niche.tone}</p>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-
-        {/* Right: Config + Output */}
-        <div className="lg:col-span-3 space-y-5">
-          {/* Platform */}
-          <Card className="bg-card border-border/50">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold">2. Select Platform</CardTitle>
+          {/* 2. Select Platform */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">2. Select Platform</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {[{ id: "all", label: "All Platforms", emoji: "🌐" }, ...PLATFORMS.map((p) => ({ id: p.id, label: p.label, emoji: p.id === "facebook" ? "📘" : p.id === "instagram" ? "📸" : "🎵" }))].map((p) => (
+            <CardContent className="flex flex-wrap gap-3">
+              {PLATFORMS.map((platform) => (
+                <button
+                  key={platform.id}
+                  onClick={() =>
+                    setSelectedPlatform(
+                      platform.id as PlatformId | "all"
+                    )
+                  }
+                  className={`px-4 py-2 rounded-lg border-2 transition-all flex items-center gap-2 ${
+                    selectedPlatform === platform.id
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/50"
+                  }`}
+                >
+                  <span>{platform.emoji}</span>
+                  <span className="text-sm font-medium">{platform.label}</span>
+                </button>
+              ))}
+            </CardContent>
+          </Card>
+
+          {/* 3. Content Type */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">3. Content Type</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-wrap gap-3">
+              {CONTENT_TYPES.map((type) => {
+                const Icon = contentTypeIcons[type.id as ContentTypeId];
+                return (
                   <button
-                    key={p.id}
-                    onClick={() => setSelectedPlatform(p.id as any)}
-                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border text-xs font-medium transition-all ${
-                      selectedPlatform === p.id
-                        ? "border-primary/40 bg-primary/8 text-primary"
-                        : "border-border/40 hover:border-border hover:bg-accent/30 text-muted-foreground"
+                    key={type.id}
+                    onClick={() =>
+                      setSelectedContentType(type.id as ContentTypeId)
+                    }
+                    className={`px-4 py-2 rounded-lg border-2 transition-all flex items-center gap-2 ${
+                      selectedContentType === type.id
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:border-primary/50"
                     }`}
                   >
-                    <span className="text-xl">{p.emoji}</span>
-                    {p.label}
+                    <Icon className="w-4 h-4" />
+                    <span className="text-sm font-medium">{type.label}</span>
                   </button>
-                ))}
-              </div>
+                );
+              })}
             </CardContent>
           </Card>
 
-          {/* Content Type */}
-          <Card className="bg-card border-border/50">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold">3. Content Type</CardTitle>
+          {/* 3.5 Content Style */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">
+                3.5 Content Style (Optional)
+              </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {CONTENT_TYPES.map((ct) => {
-                  const Icon = contentTypeIcons[ct.id as ContentTypeId];
-                  return (
-                    <button
-                      key={ct.id}
-                      onClick={() => setSelectedContentType(ct.id as ContentTypeId)}
-                      className={`flex items-center gap-2 p-3 rounded-xl border text-xs font-medium transition-all ${
-                        selectedContentType === ct.id
-                          ? "border-primary/40 bg-primary/8 text-primary"
-                          : "border-border/40 hover:border-border hover:bg-accent/30 text-muted-foreground"
-                      }`}
-                    >
-                      <Icon className="w-4 h-4 shrink-0" />
-                      <span>{ct.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
+            <CardContent className="flex flex-wrap gap-3">
+              {[
+                "motivational",
+                "engagement",
+                "personal_story",
+                "curiosity",
+                "opportunity",
+                "tips_values",
+              ].map((style) => (
+                <button
+                  key={style}
+                  onClick={() =>
+                    setSelectedContentStyle(
+                      style as
+                        | "motivational"
+                        | "engagement"
+                        | "personal_story"
+                        | "curiosity"
+                        | "opportunity"
+                        | "tips_values"
+                    )
+                  }
+                  className={`px-4 py-2 rounded-lg border-2 transition-all text-sm font-medium ${
+                    selectedContentStyle === style
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/50"
+                  }`}
+                >
+                  {style.replace(/_/g, " ")}
+                </button>
+              ))}
             </CardContent>
           </Card>
 
-          {/* Content Style */}
-          <Card className="bg-card border-border/50">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold">3.5 Content Style (Optional)</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-2">
-                {["motivational", "engagement", "personal_story", "curiosity", "opportunity", "tips_values"].map((style) => (
-                  <button
-                    key={style}
-                    onClick={() => setSelectedContentStyle(selectedContentStyle === style ? null : (style as any))}
-                    className={`p-2.5 rounded-lg border text-xs font-medium transition-all text-center ${
-                      selectedContentStyle === style
-                        ? "border-primary/40 bg-primary/8 text-primary"
-                        : "border-border/40 hover:border-border hover:bg-accent/30 text-muted-foreground"
-                    }`}
-                  >
-                    {style.replace(/_/g, " ")}
-                  </button>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Topic & Tone */}
-          <Card className="bg-card border-border/50">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold">4. Customise (Optional)</CardTitle>
+          {/* 4. Customise (Optional) */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">4. Customise (Optional)</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label className="text-xs text-muted-foreground mb-1.5 block">Topic or Focus</Label>
+                <Label htmlFor="topic" className="text-sm font-medium">
+                  Topic or Focus
+                </Label>
                 <Input
+                  id="topic"
                   placeholder="e.g. 'How I replaced my salary in 6 months'"
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
-                  className="bg-input border-border/50 text-sm"
+                  className="mt-2"
                 />
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground mb-1.5 block">Custom Tone Instructions</Label>
+                <Label htmlFor="tone" className="text-sm font-medium">
+                  Custom Tone Instructions
+                </Label>
                 <Input
+                  id="tone"
                   placeholder="e.g. 'Be very gentle and reassuring'"
                   value={customTone}
                   onChange={(e) => setCustomTone(e.target.value)}
-                  className="bg-input border-border/50 text-sm"
+                  className="mt-2"
                 />
               </div>
             </CardContent>
@@ -314,89 +378,136 @@ function GeneratorContent() {
 
           {/* Generate Button */}
           <Button
-            size="lg"
             onClick={handleGenerate}
-            disabled={!selectedNiche || generateMutation.isPending}
-            className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-medium gap-2 h-12"
+            disabled={generateMutation.isPending || !selectedNiche}
+            className="w-full h-12 text-base font-semibold"
           >
             {generateMutation.isPending ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Generating with AI...
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Generating...
               </>
             ) : (
               <>
-                <Sparkles className="w-4 h-4" />
+                <Sparkles className="w-4 h-4 mr-2" />
                 Generate Content
               </>
             )}
           </Button>
+        </div>
 
-          {/* Generated Output */}
+        {/* Right: Preview */}
+        <div className="space-y-4">
           {generatedContent && (
-            <Card className="bg-card border-primary/20">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-primary" />
-                    Generated Content
-                  </CardTitle>
-                  <Badge className="status-approved text-xs">Ready</Badge>
-                </div>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Generated Content</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <GeneratedContentDisplay content={generatedContent} onCopy={copyToClipboard} />
-
-                {/* Image Upload */}
-                <div className="pt-3 border-t border-border/50 space-y-3">
-                  <Label className="text-xs text-muted-foreground mb-1.5 block">Add Image or Video</Label>
-                  <ImageUploadField
-                    onImageSelect={(url, isAi) => {
-                      setImageUrl(url);
-                      setIsAiGenerated(isAi);
-                    }}
-                    caption={generatedContent?.caption || topic}
-                    niche={selectedNiche || undefined}
-                    tone={customTone}
+                <div>
+                  <Label className="text-sm font-medium">Post Title</Label>
+                  <Input
+                    placeholder="Give this post a title"
+                    value={postTitle}
+                    onChange={(e) => setPostTitle(e.target.value)}
+                    className="mt-2"
                   />
                 </div>
 
-                {/* Save section */}
-                <div className="pt-3 border-t border-border/50 space-y-3">
+                {generatedContent.data?.caption && (
                   <div>
-                    <Label className="text-xs text-muted-foreground mb-1.5 block">Post Title (required to save)</Label>
-                    <Input
-                      placeholder="Give this post a title..."
-                      value={postTitle}
-                      onChange={(e) => setPostTitle(e.target.value)}
-                      className="bg-input border-border/50 text-sm"
+                    <Label className="text-sm font-medium">Caption</Label>
+                    <Textarea
+                      value={generatedContent.data.caption}
+                      readOnly
+                      className="mt-2 h-32 text-xs"
                     />
-                  </div>
-                  <div className="flex gap-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={handleSaveDraft}
-                      disabled={createPostMutation.isPending || !postTitle.trim()}
-                      className="flex-1 border-border/60 gap-2"
+                      onClick={() =>
+                        copyToClipboard(generatedContent.data.caption)
+                      }
+                      className="mt-2 w-full"
                     >
-                      {createPostMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                      Save Draft
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={handleSubmitForReview}
-                      disabled={!savedPostId || submitMutation.isPending}
-                      className="flex-1 bg-primary text-primary-foreground gap-2"
-                    >
-                      {submitMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                      Submit for Review
+                      <Copy className="w-3 h-3 mr-1" />
+                      Copy Caption
                     </Button>
                   </div>
+                )}
+
+                {generatedContent.data?.hashtags && (
+                  <div>
+                    <Label className="text-sm font-medium">Hashtags</Label>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {(Array.isArray(generatedContent.data.hashtags)
+                        ? generatedContent.data.hashtags
+                        : generatedContent.data.hashtags
+                            .split(" ")
+                            .filter((h: string) => h)
+                      ).map((tag: string, idx: number) => (
+                        <Badge key={idx} variant="secondary">
+                          #{tag.replace(/^#+/, "")}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {generatedContent.data?.imagePrompt && (
+                  <div>
+                    <Label className="text-sm font-medium">Image Prompt</Label>
+                    <Textarea
+                      value={generatedContent.data.imagePrompt}
+                      readOnly
+                      className="mt-2 h-20 text-xs"
+                    />
+                  </div>
+                )}
+
+                <ImageUploadField
+                  onImageSelect={(url, isAi) => {
+                    setImageUrl(url);
+                    setIsAiGenerated(isAi);
+                  }}
+                />
+
+                <div className="flex gap-2 pt-4">
+                  <Button
+                    onClick={handleSaveDraft}
+                    disabled={createPostMutation.isPending || !postTitle.trim()}
+                    className="flex-1"
+                  >
+                    {createPostMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4 mr-2" />
+                        Save Draft
+                      </>
+                    )}
+                  </Button>
                   {savedPostId && (
-                    <p className="text-xs text-green-400 flex items-center gap-1">
-                      <CheckCircle className="w-3 h-3" /> Saved as draft (ID #{savedPostId})
-                    </p>
+                    <Button
+                      onClick={handleSubmitForReview}
+                      disabled={submitMutation.isPending}
+                      variant="default"
+                    >
+                      {submitMutation.isPending ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Submitting...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4 mr-2" />
+                          Submit
+                        </>
+                      )}
+                    </Button>
                   )}
                 </div>
               </CardContent>
@@ -404,118 +515,6 @@ function GeneratorContent() {
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-function GeneratedContentDisplay({ content, onCopy }: { content: any; onCopy: (text: string) => void }) {
-  const d = content.data;
-  const type = content.contentType;
-
-  const Section = ({ label, text, large = false }: { label: string; text: string; large?: boolean }) => (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{label}</p>
-        <button
-          onClick={() => onCopy(text)}
-          className="text-xs text-primary/70 hover:text-primary flex items-center gap-1 transition-colors"
-        >
-          <Copy className="w-3 h-3" /> Copy
-        </button>
-      </div>
-      <div className={`bg-background/50 rounded-lg p-3 border border-border/30 ${large ? "min-h-[80px]" : ""}`}>
-        <p className="text-sm leading-relaxed whitespace-pre-wrap">{text}</p>
-      </div>
-    </div>
-  );
-
-  if (type === "caption") {
-    return (
-      <div className="space-y-3">
-        {d.hook && <Section label="Hook" text={d.hook} />}
-        <Section label="Caption" text={d.caption} large />
-        {d.cta && <Section label="Call to Action" text={d.cta} />}
-        {d.characterCount && (
-          <p className="text-xs text-muted-foreground">~{d.characterCount} characters</p>
-        )}
-      </div>
-    );
-  }
-
-  if (type === "hashtags") {
-    return (
-      <div className="space-y-3">
-        <div>
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">5 Hashtags (Matched to Caption Style)</p>
-          <div className="flex flex-wrap gap-1.5">
-            {(d.hashtags || []).map((h: string) => (
-              <Badge key={h} className="bg-primary/20 text-primary text-xs cursor-pointer hover:bg-primary/30 transition-colors" onClick={() => onCopy(h)}>{h}</Badge>
-            ))}
-          </div>
-        </div>
-        {d.fullSet && <Section label="Ready to Post" text={d.fullSet} />}
-      </div>
-    );
-  }
-
-  if (type === "script") {
-    return (
-      <div className="space-y-3">
-        {d.hook && <Section label="Hook (0-3 sec)" text={d.hook} />}
-        {d.intro && <Section label="Intro" text={d.intro} />}
-        {d.mainContent?.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Main Content</p>
-            {d.mainContent.map((section: string, i: number) => (
-              <div key={i} className="bg-background/50 rounded-lg p-3 border border-border/30">
-                <p className="text-xs text-muted-foreground mb-1">Section {i + 1}</p>
-                <p className="text-sm leading-relaxed">{section}</p>
-              </div>
-            ))}
-          </div>
-        )}
-        {d.cta && <Section label="Call to Action" text={d.cta} />}
-        {d.estimatedDuration && (
-          <p className="text-xs text-muted-foreground">Estimated duration: ~{d.estimatedDuration}s</p>
-        )}
-        {d.fullScript && <Section label="Full Script" text={d.fullScript} large />}
-      </div>
-    );
-  }
-
-  if (type === "ideas") {
-    return (
-      <div className="space-y-2">
-        {(d.ideas ?? []).map((idea: any, i: number) => (
-          <div key={i} className="p-3 rounded-xl border border-border/40 bg-background/30 hover:border-primary/20 transition-colors">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <p className="text-sm font-medium">{idea.title}</p>
-                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{idea.description}</p>
-                <div className="flex items-center gap-2 mt-2">
-                  <Badge variant="outline" className="text-[10px] border-border/50">{idea.contentFormat}</Badge>
-                  <span className="text-[10px] text-primary/70">💡 {idea.engagementTip}</span>
-                </div>
-              </div>
-              <button onClick={() => onCopy(`${idea.title}\n${idea.description}`)} className="text-primary/60 hover:text-primary shrink-0">
-                <Copy className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  // full_post
-  return (
-    <div className="space-y-3">
-      {d.hook && <Section label="Hook" text={d.hook} />}
-      {d.caption && <Section label="Caption" text={d.caption} large />}
-      {d.hashtags && <Section label="Hashtags" text={d.hashtags} />}
-      {d.cta && <Section label="Call to Action" text={d.cta} />}
-      {d.postIdea && <Section label="Visual Idea" text={d.postIdea} />}
-      {d.fullPost && <Section label="Full Post (Copy-Ready)" text={d.fullPost} large />}
     </div>
   );
 }

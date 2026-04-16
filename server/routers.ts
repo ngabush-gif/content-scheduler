@@ -127,6 +127,7 @@ export const appRouter = router({
           contentType: z.enum(["caption", "script", "hashtags", "ideas", "full_post"]),
           caption: z.string().optional(),
           hashtags: z.string().optional(),
+          imagePrompt: z.string().optional(),
           script: z.string().optional(),
           ideas: z.string().optional(),
           fullContent: z.string().optional(),
@@ -138,38 +139,34 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        console.log('\n\n========== SAVE DRAFT FLOW START ==========');
-        console.log('[content.create] STEP 1: FRONTEND PAYLOAD');
+        console.log('\n\n========== BACKEND SAVE DRAFT FLOW START ==========');
+        console.log('[content.create] STEP 1: FRONTEND PAYLOAD (already parsed & validated)');
         console.log('  title:', input.title);
-        console.log('  caption length:', input.caption?.length);
-        console.log('  caption preview:', input.caption?.substring(0, 200));
-        console.log('  hashtags length:', input.hashtags?.length);
-        console.log('  hashtags preview:', input.hashtags?.substring(0, 150));
-        const cleanCaption = input.caption ? extractCleanCaption(input.caption) : undefined;
-        const normalizedHashtags = normalizeHashtags(input.hashtags);
-        console.log('\n[content.create] STEP 3: AFTER CLEANING');
-        console.log('  cleanCaption length:', cleanCaption?.length);
-        console.log('  cleanCaption preview:', cleanCaption?.substring(0, 200));
-        console.log('  normalizedHashtags:', normalizedHashtags);
+        console.log('  caption:', input.caption?.substring(0, 300));
+        console.log('  hashtags:', input.hashtags);
+        console.log('  imagePrompt:', input.imagePrompt?.substring(0, 300));
+        
+        // NO CLEANUP - fields are already clean from frontend
         const dbData = {
           ...input,
-          caption: cleanCaption,
-          hashtags: normalizedHashtags,
           authorId: ctx.user.id,
           status: "approved" as const,
           aiGeneratedImage: input.aiGeneratedImage ? 1 : (input.aiGeneratedImage === false ? 0 : undefined),
         };
-        console.log('\n[content.create] STEP 4: DB PAYLOAD');
-        console.log('  caption to save:', dbData.caption?.substring(0, 200));
-        console.log('  hashtags to save:', dbData.hashtags);
+        
+        console.log('\n[content.create] STEP 2: FINAL DB PAYLOAD (no cleanup applied)');
+        console.log('  caption:', dbData.caption?.substring(0, 300));
+        console.log('  hashtags:', dbData.hashtags);
+        console.log('  imagePrompt:', dbData.imagePrompt?.substring(0, 300));
         
         const result = await createContentPost(dbData);
         
-        console.log('\n[content.create] STEP 5: DATABASE RESULT');
+        console.log('\n[content.create] STEP 3: DATABASE RESULT');
         console.log('  saved id:', (result as any)?.id);
-        console.log('  saved caption:', (result as any)?.caption?.substring(0, 200));
+        console.log('  saved caption:', (result as any)?.caption?.substring(0, 300));
         console.log('  saved hashtags:', (result as any)?.hashtags);
-        console.log('========== SAVE DRAFT FLOW END ==========\n\n');
+        console.log('  saved imagePrompt:', (result as any)?.imagePrompt?.substring(0, 300));
+        console.log('========== BACKEND SAVE DRAFT FLOW END ==========\n\n');
         
         return result;
       }),
@@ -309,14 +306,17 @@ Style: ${input.contentStyle || "motivational"}
 
 Generate ONLY the content. Return a JSON object with these fields:
 {
-  "caption": "The main caption text (keep it engaging and multi-paragraph if needed)",
-  "hashtags": "Exactly 5 hashtags separated by spaces, e.g., #tag1 #tag2 #tag3 #tag4 #tag5",
-  "script": "Video script if applicable",
-  "ideas": ["idea1", "idea2", "idea3"],
-  "fullPost": "Complete post with caption and hashtags"
+  "caption": "The main caption text (keep it engaging and multi-paragraph if needed). MUST NOT contain any hashtags.",
+  "hashtags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
+  "imagePrompt": "A detailed prompt for generating an image that matches the caption"
 }
 
-Do NOT include metadata, status, image URLs, or tone descriptors in the output.`;
+IMPORTANT:
+- caption: Clean text only, NO hashtags, NO URLs, NO metadata
+- hashtags: Array of exactly 5 hashtags (without # symbol)
+- imagePrompt: Detailed visual description for image generation
+- Do NOT include metadata, status, image URLs, or tone descriptors
+- Do NOT include any extra fields or explanations`;
 
         const response = await invokeLLM({
           messages: [{ role: "user", content: prompt }],
@@ -329,20 +329,24 @@ Do NOT include metadata, status, image URLs, or tone descriptors in the output.`
                 type: "object",
                 properties: {
                   caption: { type: "string" },
-                  hashtags: { type: "string" },
-                  script: { type: "string" },
-                  ideas: { type: "array", items: { type: "string" } },
-                  fullPost: { type: "string" },
+                  hashtags: { type: "array", items: { type: "string" }, minItems: 5, maxItems: 5 },
+                  imagePrompt: { type: "string" },
                 },
-                required: ["caption", "hashtags"],
+                required: ["caption", "hashtags", "imagePrompt"],
               },
             },
           },
         });
 
         const messageContent = response.choices[0].message.content;
+        console.log('[generate.content] RAW LLM OUTPUT:', JSON.stringify(messageContent, null, 2));
+        
         const contentStr = typeof messageContent === 'string' ? messageContent : JSON.stringify(messageContent);
         const content = JSON.parse(contentStr);
+        
+        console.log('[generate.content] PARSED JSON:', JSON.stringify(content, null, 2));
+        console.log('[generate.content] FINAL PAYLOAD TO FRONTEND:', JSON.stringify(content, null, 2));
+        
         return { data: content };
       }),
   }),
@@ -376,6 +380,66 @@ Do NOT include metadata, status, image URLs, or tone descriptors in the output.`
       ctx.res?.clearCookie("session");
       return { success: true };
     }),
+  }),
+
+  // ─── Approval Workflow ───────────────────────────────────────────────────────
+  approval: router({
+    pending: adminProcedure
+      .query(async () => {
+        const posts = await getAllContentPosts({ status: 'pending_review' });
+        return posts || [];
+      }),
+
+    approve: adminProcedure
+      .input(z.object({ id: z.number(), note: z.string().optional() }))
+      .mutation(async ({ input }) => {
+        const post = await getContentPostById(input.id);
+        if (!post) throw new TRPCError({ code: 'NOT_FOUND' });
+        await updateContentPost(input.id, { status: 'approved' });
+        return { success: true };
+      }),
+
+    reject: adminProcedure
+      .input(z.object({ id: z.number(), note: z.string() }))
+      .mutation(async ({ input }) => {
+        const post = await getContentPostById(input.id);
+        if (!post) throw new TRPCError({ code: 'NOT_FOUND' });
+        await updateContentPost(input.id, { status: 'rejected' });
+        return { success: true };
+      }),
+
+    requestRevision: adminProcedure
+      .input(z.object({ id: z.number(), note: z.string() }))
+      .mutation(async ({ input }) => {
+        const post = await getContentPostById(input.id);
+        if (!post) throw new TRPCError({ code: 'NOT_FOUND' });
+        await updateContentPost(input.id, { status: 'draft' });
+        return { success: true };
+      }),
+  }),
+
+  // ─── Analytics ───────────────────────────────────────────────────────────────
+  analytics: router({
+    summary: protectedProcedure
+      .query(async ({ ctx }) => {
+        const posts = await getAllContentPosts();
+        const userPosts = posts.filter(p => p.authorId === ctx.user.id);
+        const isAdmin = ctx.user.role === 'admin';
+        const postsToAnalyze = isAdmin ? posts : userPosts;
+        
+        return {
+          totalPosts: postsToAnalyze.length,
+          byStatus: {
+            draft: postsToAnalyze.filter(p => p.status === 'draft').length,
+            pending_review: postsToAnalyze.filter(p => p.status === 'pending_review').length,
+            approved: postsToAnalyze.filter(p => p.status === 'approved').length,
+            rejected: postsToAnalyze.filter(p => p.status === 'rejected').length,
+            published: postsToAnalyze.filter(p => p.status === 'published').length,
+          },
+          byNiche: {},
+          byPlatform: {},
+        };
+      }),
   }),
 
   // ─── Nested Routers ───────────────────────────────────────────────────────
