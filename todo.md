@@ -187,9 +187,13 @@
 
 ## Remaining High-Priority Items
 
-### Instagram Token Refresh (NEXT)
-- [ ] Reconnect Instagram account with valid long-lived token
-- [ ] Test Instagram publish end-to-end
+### Instagram Token Refresh (COMPLETED)
+- [x] Implement Instagram OAuth flow with token exchange
+- [x] Add Instagram OAuth procedures to connections router
+- [x] Add Instagram OAuth callback route to Express server
+- [x] Update Connections page with Instagram OAuth UI
+- [x] Token validation before publish (already implemented)
+- [ ] Test Instagram publish end-to-end with valid token
 - [ ] Verify post appears on Instagram
 
 ### Basic Scheduling (NEXT)

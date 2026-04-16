@@ -4,6 +4,7 @@ import * as db from "../db";
 import { getSessionCookieOptions } from "./cookies";
 import { sdk } from "./sdk";
 import { exchangeCodeForToken, exchangeForLongLivedToken, getUserPages, findPageById, getPageAccessToken, extractPageAccessToken, calculateTokenExpiry } from "../facebookOAuth";
+import { exchangeCodeForToken as instagramExchangeCodeForToken, exchangeForLongLivedToken as instagramExchangeForLongLivedToken, getInstagramAccount, calculateTokenExpiry as instagramCalculateTokenExpiry } from "../instagramOAuth";
 import { getDb } from "../db";
 import { platformConnections } from "../../drizzle/schema";
 import { eq, and } from "drizzle-orm";
@@ -193,6 +194,129 @@ export function registerOAuthRoutes(app: Express) {
       return res.redirect(302, `/connections?success=${successMsg}`);
     } catch (error) {
       console.error("[Facebook OAuth Callback] Error:", error);
+      const errorMsg = encodeURIComponent(`Connection failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+      return res.redirect(302, `/connections?error=${errorMsg}`);
+    }
+  });
+
+  // Instagram OAuth callback (platform connection)
+  app.get("/api/oauth/instagram/callback", async (req: Request, res: Response) => {
+    const code = getQueryParam(req, "code");
+    const state = getQueryParam(req, "state");
+    const error = getQueryParam(req, "error");
+    const errorDescription = getQueryParam(req, "error_description");
+
+    console.log("[Instagram OAuth Callback] Received request");
+    console.log("[Instagram OAuth Callback] Code:", code ? "present" : "missing");
+    console.log("[Instagram OAuth Callback] State:", state ? "present" : "missing");
+    console.log("[Instagram OAuth Callback] Error:", error || "none");
+
+    // Handle Instagram OAuth errors
+    if (error) {
+      console.error("[Instagram OAuth Callback] Instagram error:", error, errorDescription);
+      const errorMsg = encodeURIComponent(`Instagram error: ${error} - ${errorDescription || "Unknown error"}`);
+      return res.redirect(302, `/connections?error=${errorMsg}`);
+    }
+
+    if (!code || !state) {
+      console.error("[Instagram OAuth Callback] Missing code or state");
+      const errorMsg = encodeURIComponent("Missing authorization code or state");
+      return res.redirect(302, `/connections?error=${errorMsg}`);
+    }
+
+    try {
+      // Parse state to get userId
+      let userId: number;
+      try {
+        const stateObj = JSON.parse(state);
+        userId = stateObj.userId;
+        console.log("[Instagram OAuth Callback] Parsed state, userId:", userId);
+      } catch (e) {
+        console.error("[Instagram OAuth Callback] Failed to parse state:", e);
+        const errorMsg = encodeURIComponent("Invalid state parameter");
+        return res.redirect(302, `/connections?error=${errorMsg}`);
+      }
+
+      if (!userId) {
+        console.error("[Instagram OAuth Callback] userId not found in state");
+        const errorMsg = encodeURIComponent("User ID not found in state");
+        return res.redirect(302, `/connections?error=${errorMsg}`);
+      }
+
+      console.log("[Instagram OAuth Callback] Starting token exchange for user", userId);
+
+      // Step 1: Exchange code for short-lived token
+      const shortLivedTokenResponse = await instagramExchangeCodeForToken(code);
+      const shortLivedToken = shortLivedTokenResponse.access_token;
+      console.log("[Instagram OAuth Callback] Received short-lived token");
+
+      // Step 2: Exchange for long-lived token
+      const longLivedTokenResponse = await instagramExchangeForLongLivedToken(shortLivedToken);
+      const accessToken = longLivedTokenResponse.access_token;
+      const tokenExpiry = instagramCalculateTokenExpiry(longLivedTokenResponse.expires_in);
+      console.log("[Instagram OAuth Callback] Exchanged for long-lived token, expires:", tokenExpiry);
+
+      // Step 3: Get Instagram account info
+      const account = await getInstagramAccount(accessToken);
+      console.log("[Instagram OAuth Callback] Got Instagram account:", account.username);
+
+      // Step 4: Save to database
+      const database = await getDb();
+      if (!database) {
+        console.error("[Instagram OAuth Callback] Database unavailable");
+        const errorMsg = encodeURIComponent("Database connection failed");
+        return res.redirect(302, `/connections?error=${errorMsg}`);
+      }
+
+      // Check for existing connection
+      const existingConnection = await database
+        .select()
+        .from(platformConnections)
+        .where(
+          and(
+            eq(platformConnections.userId, userId),
+            eq(platformConnections.platform, "instagram"),
+            eq(platformConnections.accountId, account.id)
+          )
+        )
+        .limit(1);
+
+      let connectionId: number;
+
+      if (existingConnection.length > 0) {
+        console.log("[Instagram OAuth Callback] Updating existing connection", existingConnection[0].id);
+        await database
+          .update(platformConnections)
+          .set({
+            accessToken: accessToken,
+            expiresAt: tokenExpiry,
+            isActive: 1,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(platformConnections.id, existingConnection[0].id));
+        connectionId = existingConnection[0].id;
+      } else {
+        console.log("[Instagram OAuth Callback] Creating new connection for user", userId);
+        const result = await database.insert(platformConnections).values({
+          userId,
+          platform: "instagram",
+          accountName: account.username,
+          accountId: account.id,
+          accessToken: accessToken,
+          isActive: 1,
+          connectedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          expiresAt: tokenExpiry,
+        });
+        connectionId = (result as any)[0].insertId;
+        console.log("[Instagram OAuth Callback] Created new connection", connectionId);
+      }
+
+      console.log("[Instagram OAuth Callback] Successfully saved connection", connectionId);
+      const successMsg = encodeURIComponent(`Successfully connected to Instagram account: ${account.username}`);
+      return res.redirect(302, `/connections?success=${successMsg}`);
+    } catch (error) {
+      console.error("[Instagram OAuth Callback] Error:", error);
       const errorMsg = encodeURIComponent(`Connection failed: ${error instanceof Error ? error.message : "Unknown error"}`);
       return res.redirect(302, `/connections?error=${errorMsg}`);
     }
