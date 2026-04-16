@@ -67,6 +67,8 @@ export function registerOAuthRoutes(app: Express) {
     const errorDescription = getQueryParam(req, "error_description");
 
     console.log("[Facebook OAuth Callback] Received request");
+    console.log("[Facebook OAuth Callback] Raw state:", state);
+    console.log("[Facebook OAuth Callback] Session cookie:", req.headers.cookie ? "present" : "missing");
     console.log("[Facebook OAuth Callback] Code:", code ? "present" : "missing");
     console.log("[Facebook OAuth Callback] State:", state ? "present" : "missing");
     console.log("[Facebook OAuth Callback] Error:", error || "none");
@@ -85,7 +87,24 @@ export function registerOAuthRoutes(app: Express) {
     }
 
     try {
-      // Parse state to get userId
+      // Step 0: Verify authenticated session
+      let authenticatedUser: any;
+      try {
+        authenticatedUser = await sdk.authenticateRequest(req);
+        console.log("[Facebook OAuth Callback] Authenticated user:", authenticatedUser?.id);
+      } catch (e) {
+        console.error("[Facebook OAuth Callback] No authenticated session");
+        const errorMsg = encodeURIComponent("You must be logged in to connect a platform account");
+        return res.redirect(302, `/connections?error=${errorMsg}`);
+      }
+
+      if (!authenticatedUser || !authenticatedUser.id) {
+        console.error("[Facebook OAuth Callback] Authenticated user has no ID");
+        const errorMsg = encodeURIComponent("Authentication failed: user ID missing");
+        return res.redirect(302, `/connections?error=${errorMsg}`);
+      }
+
+      // Step 1: Parse state and verify it matches authenticated user
       let userId: number;
       try {
         const stateObj = JSON.parse(state);
@@ -103,7 +122,14 @@ export function registerOAuthRoutes(app: Express) {
         return res.redirect(302, `/connections?error=${errorMsg}`);
       }
 
-      console.log("[Facebook OAuth Callback] Starting token exchange for user", userId);
+      // Verify state userId matches authenticated user
+      if (userId !== authenticatedUser.id) {
+        console.error("[Facebook OAuth Callback] State userId mismatch. State:", userId, "Authenticated:", authenticatedUser.id);
+        const errorMsg = encodeURIComponent("User ID mismatch: state does not match authenticated user");
+        return res.redirect(302, `/connections?error=${errorMsg}`);
+      }
+
+      console.log("[Facebook OAuth Callback] User verified. Starting token exchange for user", userId);
 
       // Step 1: Exchange code for short-lived token
       const shortLivedTokenResponse = await exchangeCodeForToken(code);
@@ -209,6 +235,8 @@ export function registerOAuthRoutes(app: Express) {
     const errorDescription = getQueryParam(req, "error_description");
 
     console.log("[Instagram OAuth Callback] Received request");
+    console.log("[Instagram OAuth Callback] Raw state:", state);
+    console.log("[Instagram OAuth Callback] Session cookie:", req.headers.cookie ? "present" : "missing");
     console.log("[Instagram OAuth Callback] Code:", code ? "present" : "missing");
     console.log("[Instagram OAuth Callback] State:", state ? "present" : "missing");
     console.log("[Instagram OAuth Callback] Error:", error || "none");
@@ -227,7 +255,24 @@ export function registerOAuthRoutes(app: Express) {
     }
 
     try {
-      // Parse state to get userId
+      // Step 0: Verify authenticated session
+      let authenticatedUser: any;
+      try {
+        authenticatedUser = await sdk.authenticateRequest(req);
+        console.log("[Instagram OAuth Callback] Authenticated user:", authenticatedUser?.id);
+      } catch (e) {
+        console.error("[Instagram OAuth Callback] No authenticated session");
+        const errorMsg = encodeURIComponent("You must be logged in to connect a platform account");
+        return res.redirect(302, `/connections?error=${errorMsg}`);
+      }
+
+      if (!authenticatedUser || !authenticatedUser.id) {
+        console.error("[Instagram OAuth Callback] Authenticated user has no ID");
+        const errorMsg = encodeURIComponent("Authentication failed: user ID missing");
+        return res.redirect(302, `/connections?error=${errorMsg}`);
+      }
+
+      // Step 1: Parse state and verify it matches authenticated user
       let userId: number;
       try {
         const stateObj = JSON.parse(state);
@@ -242,6 +287,13 @@ export function registerOAuthRoutes(app: Express) {
       if (!userId) {
         console.error("[Instagram OAuth Callback] userId not found in state");
         const errorMsg = encodeURIComponent("User ID not found in state");
+        return res.redirect(302, `/connections?error=${errorMsg}`);
+      }
+
+      // Verify state userId matches authenticated user
+      if (userId !== authenticatedUser.id) {
+        console.error("[Instagram OAuth Callback] State userId mismatch. State:", userId, "Authenticated:", authenticatedUser.id);
+        const errorMsg = encodeURIComponent("User ID mismatch: state does not match authenticated user");
         return res.redirect(302, `/connections?error=${errorMsg}`);
       }
 
