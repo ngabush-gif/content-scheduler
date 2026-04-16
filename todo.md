@@ -238,3 +238,14 @@
 - [x] Validate state parameter signature or use secure session-based state storage (now verifies state userId matches authenticated user ID)
 - [ ] Test full signup → connect platform → callback flow end-to-end on production
 - [ ] Capture actual callback logs to verify session/user resolution works
+
+
+## Manus OAuth Callback Sign-In - CRITICAL BUG
+- [ ] Trace Manus OAuth callback flow and identify upsert failure
+- [ ] Log exact upsert payload and database error details
+- [ ] Identify which unique key is conflicting (openId, email, etc.)
+- [ ] Fix upsert logic to match existing email users correctly
+- [ ] Add safe error handling without exposing SQL errors to browser
+- [ ] Test Manus sign-in callback end-to-end
+- [ ] Verify existing email users can sign in via Manus OAuth
+- [ ] Verify new users are created correctly via Manus OAuth

@@ -55,7 +55,15 @@ export function registerOAuthRoutes(app: Express) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.error("[OAuth] Callback failed:", errorMsg);
       console.error("[OAuth] Full error:", error);
-      res.status(500).json({ error: `OAuth callback failed: ${errorMsg}` });
+      console.error("[OAuth] Error stack:", error instanceof Error ? error.stack : "no stack");
+      // Check for various database errors and return safe messages
+      let safeErrorMsg = "Authentication failed. Please try again.";
+      if (errorMsg.includes("Duplicate entry") || errorMsg.includes("DUPLICATE KEY") || errorMsg.includes("duplicate")) {
+        safeErrorMsg = "This account is already registered. Please sign in instead.";
+      } else if (errorMsg.includes("Failed query") || errorMsg.includes("insert into")) {
+        safeErrorMsg = "Database error during sign-in. Please try again.";
+      }
+      res.status(500).json({ error: safeErrorMsg });
     }
   });
 
@@ -222,6 +230,9 @@ export function registerOAuthRoutes(app: Express) {
       return res.redirect(302, `/connections?success=${successMsg}`);
     } catch (error) {
       console.error("[Facebook OAuth Callback] Error:", error);
+      console.error("[Facebook OAuth Callback] Error type:", error instanceof Error ? error.constructor.name : typeof error);
+      console.error("[Facebook OAuth Callback] Error stack:", error instanceof Error ? error.stack : "no stack");
+      console.error("[Facebook OAuth Callback] Full error object:", JSON.stringify(error, null, 2));
       const errorMsg = encodeURIComponent(`Connection failed: ${error instanceof Error ? error.message : "Unknown error"}`);
       return res.redirect(302, `/connections?error=${errorMsg}`);
     }
@@ -371,6 +382,9 @@ export function registerOAuthRoutes(app: Express) {
       return res.redirect(302, `/connections?success=${successMsg}`);
     } catch (error) {
       console.error("[Instagram OAuth Callback] Error:", error);
+      console.error("[Instagram OAuth Callback] Error type:", error instanceof Error ? error.constructor.name : typeof error);
+      console.error("[Instagram OAuth Callback] Error stack:", error instanceof Error ? error.stack : "no stack");
+      console.error("[Instagram OAuth Callback] Full error object:", JSON.stringify(error, null, 2));
       const errorMsg = encodeURIComponent(`Connection failed: ${error instanceof Error ? error.message : "Unknown error"}`);
       return res.redirect(302, `/connections?error=${errorMsg}`);
     }
