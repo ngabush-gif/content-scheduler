@@ -1,0 +1,1 @@
+ALTER TABLE `content_posts` ADD `imagePrompt` text;

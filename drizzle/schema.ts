@@ -18,7 +18,7 @@ export const contentPosts = mysqlTable("content_posts", {
 	platform: mysqlEnum(['facebook','instagram','tiktok','all']).notNull(),
 	contentType: mysqlEnum(['caption','script','hashtags','ideas','full_post']).notNull(),
 	caption: text(),
-	hashtags: text(),
+	hashtags: text(), // Stored as space-separated or JSON array
 	script: text(),
 	ideas: text(),
 	fullContent: text(),
@@ -37,6 +37,7 @@ export const contentPosts = mysqlTable("content_posts", {
 	aiGeneratedImage: tinyint().default(0).notNull(),
 	mediaType: mysqlEnum(['none','image','video']).default('none').notNull(),
 	contentStyle: mysqlEnum(['motivational','engagement','personal_story','curiosity','opportunity','tips_values']),
+	imagePrompt: text(),
 });
 
 export const contentTemplates = mysqlTable("content_templates", {

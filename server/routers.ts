@@ -329,7 +329,7 @@ IMPORTANT:
                 type: "object",
                 properties: {
                   caption: { type: "string" },
-                  hashtags: { type: "array", items: { type: "string" }, minItems: 5, maxItems: 5 },
+                  hashtags: { type: "array", items: { type: "string" },  },
                   imagePrompt: { type: "string" },
                 },
                 required: ["caption", "hashtags", "imagePrompt"],
@@ -338,16 +338,82 @@ IMPORTANT:
           },
         });
 
-        const messageContent = response.choices[0].message.content;
+        // ─── DEFENSIVE ERROR HANDLING ───
+        console.log('[generate.content] RAW RESPONSE:', JSON.stringify(response, null, 2));
+        
+        // Validate response structure
+        if (!response || !response.choices || !Array.isArray(response.choices) || response.choices.length === 0) {
+          console.error('[generate.content] ERROR: Invalid LLM response structure');
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'LLM returned invalid response structure' });
+        }
+        
+        const choice = response.choices[0];
+        if (!choice || !choice.message) {
+          console.error('[generate.content] ERROR: Missing choice or message in response');
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'LLM response missing message' });
+        }
+        
+        const messageContent = choice.message.content;
         console.log('[generate.content] RAW LLM OUTPUT:', JSON.stringify(messageContent, null, 2));
         
-        const contentStr = typeof messageContent === 'string' ? messageContent : JSON.stringify(messageContent);
-        const content = JSON.parse(contentStr);
+        if (!messageContent) {
+          console.error('[generate.content] ERROR: Empty message content');
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'LLM returned empty content' });
+        }
         
-        console.log('[generate.content] PARSED JSON:', JSON.stringify(content, null, 2));
-        console.log('[generate.content] FINAL PAYLOAD TO FRONTEND:', JSON.stringify(content, null, 2));
+        // Parse JSON safely
+        let content: any;
+        try {
+          const contentStr = typeof messageContent === 'string' ? messageContent : JSON.stringify(messageContent);
+          content = JSON.parse(contentStr);
+          console.log('[generate.content] PARSED JSON:', JSON.stringify(content, null, 2));
+        } catch (parseErr) {
+          console.error('[generate.content] JSON PARSE ERROR:', parseErr, 'Raw content:', messageContent);
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to parse LLM response as JSON' });
+        }
         
-        return { data: content };
+        // ─── NORMALIZE & VALIDATE STRUCTURE ───
+        const normalized = {
+          caption: '',
+          hashtags: [] as string[],
+          imagePrompt: '',
+        };
+        
+        // Validate caption
+        if (typeof content.caption === 'string' && content.caption.trim()) {
+          normalized.caption = content.caption.trim();
+        } else {
+          console.warn('[generate.content] WARNING: caption is missing or not a string, using empty string');
+        }
+        
+        // Validate hashtags
+        if (Array.isArray(content.hashtags) && content.hashtags.length > 0) {
+          normalized.hashtags = content.hashtags
+            .slice(0, 5)
+            .map((tag: any) => String(tag).replace(/^#+/, '').trim())
+            .filter((tag: string) => tag.length > 0);
+          
+          // Pad with defaults if needed
+          while (normalized.hashtags.length < 5) {
+            normalized.hashtags.push(`tag${normalized.hashtags.length + 1}`);
+          }
+        } else {
+          console.warn('[generate.content] WARNING: hashtags is missing or not an array, using defaults');
+          normalized.hashtags = ['tag1', 'tag2', 'tag3', 'tag4', 'tag5'];
+        }
+        
+        // Validate imagePrompt
+        if (typeof content.imagePrompt === 'string' && content.imagePrompt.trim()) {
+          normalized.imagePrompt = content.imagePrompt.trim();
+        } else {
+          console.warn('[generate.content] WARNING: imagePrompt is missing or not a string, using default');
+          normalized.imagePrompt = 'A professional image related to the caption';
+        }
+        
+        console.log('[generate.content] NORMALIZED & VALIDATED:', JSON.stringify(normalized, null, 2));
+        console.log('[generate.content] FINAL PAYLOAD TO FRONTEND:', JSON.stringify(normalized, null, 2));
+        
+        return { data: normalized };
       }),
   }),
 

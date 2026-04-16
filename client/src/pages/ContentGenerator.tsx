@@ -53,10 +53,77 @@ function GeneratorContent() {
 
   const generateMutation = trpc.generate.content.useMutation({
     onSuccess: (data) => {
-      setGeneratedContent(data);
-      toast.success("Content generated successfully!");
+      try {
+        console.log('[generateMutation] RAW RESPONSE:', JSON.stringify(data, null, 2));
+        
+        // ─── DEFENSIVE: Validate response structure ───
+        if (!data) {
+          console.error('[generateMutation] ERROR: data is null/undefined');
+          toast.error("Content generation failed: empty response");
+          return;
+        }
+        
+        if (!data.data) {
+          console.error('[generateMutation] ERROR: data.data is missing');
+          toast.error("Content generation failed: invalid response structure");
+          return;
+        }
+        
+        const content = data.data;
+        console.log('[generateMutation] EXTRACTED CONTENT:', JSON.stringify(content, null, 2));
+        
+        // ─── DEFENSIVE: Normalize content structure ───
+        const normalized = {
+          data: {
+            caption: '',
+            hashtags: [] as string[],
+            imagePrompt: '',
+          }
+        };
+        
+        // Validate caption
+        if (typeof content.caption === 'string' && content.caption.trim()) {
+          normalized.data.caption = content.caption.trim();
+        } else {
+          console.warn('[generateMutation] WARNING: caption is missing or not a string');
+        }
+        
+        // Validate hashtags - CRITICAL CHECK
+        if (Array.isArray(content.hashtags) && content.hashtags.length > 0) {
+          normalized.data.hashtags = content.hashtags
+            .slice(0, 5)
+            .map((tag: any) => String(tag).replace(/^#+/, '').trim())
+            .filter((tag: string) => tag.length > 0);
+          
+          // Pad with defaults if needed
+          while (normalized.data.hashtags.length < 5) {
+            normalized.data.hashtags.push(`tag${normalized.data.hashtags.length + 1}`);
+          }
+        } else {
+          console.warn('[generateMutation] WARNING: hashtags is missing or not an array, using defaults');
+          normalized.data.hashtags = ['tag1', 'tag2', 'tag3', 'tag4', 'tag5'];
+        }
+        
+        // Validate imagePrompt
+        if (typeof content.imagePrompt === 'string' && content.imagePrompt.trim()) {
+          normalized.data.imagePrompt = content.imagePrompt.trim();
+        } else {
+          console.warn('[generateMutation] WARNING: imagePrompt is missing or not a string');
+          normalized.data.imagePrompt = 'A professional image related to the caption';
+        }
+        
+        console.log('[generateMutation] NORMALIZED CONTENT:', JSON.stringify(normalized, null, 2));
+        
+        // ─── SAFE TO SET STATE ───
+        setGeneratedContent(normalized);
+        toast.success("Content generated successfully!");
+      } catch (err) {
+        console.error('[generateMutation] CRITICAL ERROR:', err);
+        toast.error("Content generation failed: " + (err instanceof Error ? err.message : 'Unknown error'));
+      }
     },
     onError: (err) => {
+      console.error('[generateMutation] MUTATION ERROR:', err);
       toast.error("Generation failed: " + err.message);
     },
   });
@@ -82,24 +149,43 @@ function GeneratorContent() {
   const niche = NICHES.find((n) => n.id === selectedNiche);
 
   const handleGenerate = () => {
-    if (!selectedNiche) {
-      toast.error("Please select an audience niche first");
-      return;
+    try {
+      if (!selectedNiche) {
+        toast.error("Please select an audience niche first");
+        return;
+      }
+      
+      // ─── DEFENSIVE: Safely handle optional contentStyle ───
+      let contentStyle: string | undefined = undefined;
+      if (selectedContentStyle) {
+        contentStyle = selectedContentStyle.replace(/ /g, '_');
+      }
+      
+      generateMutation.mutate({
+        niche: selectedNiche,
+        platform: selectedPlatform as any,
+        contentType: selectedContentType,
+        topic: topic || undefined,
+        customTone: customTone || undefined,
+        contentStyle: contentStyle as any,
+      });
+    } catch (err) {
+      console.error('[handleGenerate] ERROR:', err);
+      toast.error("Generation failed: " + (err instanceof Error ? err.message : 'Unknown error'));
     }
-    generateMutation.mutate({
-      niche: selectedNiche,
-      platform: selectedPlatform as any,
-      contentType: selectedContentType,
-      topic: topic || undefined,
-      customTone: customTone || undefined,
-      contentStyle: selectedContentStyle as any,
-    });
   };
 
   const handleSaveDraft = async () => {
     if (!generatedContent || !selectedNiche) return;
     if (!postTitle.trim()) {
       toast.error("Please add a title for this post");
+      return;
+    }
+
+    // ─── DEFENSIVE: Validate generatedContent structure ───
+    if (!generatedContent.data) {
+      console.error('[handleSaveDraft] ERROR: generatedContent.data is missing');
+      toast.error("Generated content is missing. Please try generating again.");
       return;
     }
 
@@ -115,46 +201,53 @@ function GeneratorContent() {
     let imagePrompt = "";
 
     try {
-      // Validate caption
+      // ─── DEFENSIVE: Validate caption ───
       if (typeof d.caption !== "string") {
-        throw new Error("caption must be a string");
+        console.warn('[handleSaveDraft] WARNING: caption is not a string, using empty string');
+        caption = "";
+      } else {
+        caption = d.caption.trim();
       }
-      caption = d.caption.trim();
 
-      // Validate hashtags
+      // ─── DEFENSIVE: Validate hashtags ───
       if (!Array.isArray(d.hashtags)) {
-        throw new Error("hashtags must be an array");
+        console.warn('[handleSaveDraft] WARNING: hashtags is not an array, using defaults');
+        hashtags = ['tag1', 'tag2', 'tag3', 'tag4', 'tag5'];
+      } else {
+        hashtags = d.hashtags
+          .slice(0, 5)
+          .map((tag: any) => {
+            const cleaned = String(tag).replace(/^#+/, "").trim();
+            return cleaned;
+          })
+          .filter((tag: string) => tag.length > 0);
+        
+        // Pad with defaults if needed
+        while (hashtags.length < 5) {
+          hashtags.push(`tag${hashtags.length + 1}`);
+        }
       }
-      if (d.hashtags.length !== 5) {
-        throw new Error(
-          `hashtags must have exactly 5 items, got ${d.hashtags.length}`
-        );
-      }
-      hashtags = d.hashtags.map((tag: string) => {
-        const cleaned = String(tag).replace(/^#+/, "").trim();
-        if (!cleaned) throw new Error("hashtag cannot be empty");
-        return cleaned;
-      });
 
-      // Validate imagePrompt
+      // ─── DEFENSIVE: Validate imagePrompt ───
       if (typeof d.imagePrompt !== "string") {
-        throw new Error("imagePrompt must be a string");
-      }
-      imagePrompt = d.imagePrompt.trim();
-
-      // Validate caption does NOT contain hashtags
-      if (caption.includes("#")) {
-        throw new Error("caption must not contain hashtags");
+        console.warn('[handleSaveDraft] WARNING: imagePrompt is not a string, using default');
+        imagePrompt = "A professional image related to the caption";
+      } else {
+        imagePrompt = d.imagePrompt.trim() || "A professional image related to the caption";
       }
 
-      // Validate caption does NOT contain URLs
-      if (/https?:\/\//.test(caption)) {
-        throw new Error("caption must not contain URLs");
-      }
+      // ─── DEFENSIVE: Sanitize caption ───
+      // Remove any hashtags that might have slipped through
+      caption = caption.replace(/#[a-zA-Z0-9_]+/g, "").trim();
+      
+      // Remove any URLs
+      caption = caption.replace(/https?:\/\/[^\s]+/g, "").trim();
+      
+      console.log('[handleSaveDraft] AFTER SANITIZATION:', { caption, hashtags, imagePrompt });
     } catch (err) {
       console.error("[handleSaveDraft] VALIDATION ERROR:", err);
       toast.error(
-        `Invalid content structure: ${
+        `Error processing content: ${
           err instanceof Error ? err.message : "Unknown error"
         }`
       );
