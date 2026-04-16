@@ -217,3 +217,13 @@
 - [x] Test core API endpoints on published domain (verified: /api/trpc/auth.me, /api/oauth/facebook/callback, /api/oauth/instagram/callback all working)
 - [x] Verify OAuth callbacks work on production (verified: both Facebook and Instagram callbacks return proper redirects, no 403 errors)
 - [ ] Verify publishing works on production (implementation ready, needs end-to-end test with valid credentials)
+
+
+## OAuth Callback Debugging - CRITICAL ISSUE
+- [ ] Examine OAuth callback route implementation (Facebook and Instagram)
+- [ ] Check session/authentication state in callback handler
+- [ ] Verify state parameter creation, storage, and validation
+- [ ] Check cookie/session preservation across signup → OAuth callback flow
+- [ ] Add detailed error logging to callback handlers
+- [ ] Test callback end-to-end and identify first failure point
+- [ ] Fix the identified issue and verify callback works end-to-end

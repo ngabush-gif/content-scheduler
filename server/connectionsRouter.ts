@@ -33,7 +33,9 @@ export const connectionsRouter = router({
   getFacebookAuthUrl: publicProcedure
     .input(z.object({ state: z.string() }))
     .query(({ input }: any) => {
-      const url = getFacebookAuthUrl(input.state);
+      // Encode state as JSON so callback can parse it
+      const stateObj = JSON.stringify({ userId: parseInt(input.state, 10) });
+      const url = getFacebookAuthUrl(stateObj);
       return { url };
     }),
 
@@ -167,7 +169,9 @@ export const connectionsRouter = router({
   getInstagramAuthUrl: publicProcedure
     .input(z.object({ state: z.string() }))
     .query(({ input }: any) => {
-      const url = getInstagramAuthUrl(input.state);
+      // Encode state as JSON so callback can parse it
+      const stateObj = JSON.stringify({ userId: parseInt(input.state, 10) });
+      const url = getInstagramAuthUrl(stateObj);
       return { url };
     }),
 
