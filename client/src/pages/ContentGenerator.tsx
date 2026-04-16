@@ -103,13 +103,28 @@ function GeneratorContent() {
       return;
     }
     const d = generatedContent.data;
+    
+    console.log('\n\n========== FRONTEND SAVE DRAFT ==========');
+    console.log('[handleSaveDraft] Raw LLM output:');
+    console.log('  d.caption:', d.caption?.substring(0, 300));
+    console.log('  d.fullPost:', d.fullPost?.substring(0, 300));
+    console.log('  d.hashtags:', d.hashtags?.substring(0, 200));
+    console.log('  d.fullSet:', d.fullSet?.substring(0, 200));
+    
+    const captionToSend = d.caption || d.fullPost;
+    const hashtagsToSend = d.hashtags || d.fullSet;
+    
+    console.log('[handleSaveDraft] Sending to backend:');
+    console.log('  caption:', captionToSend?.substring(0, 300));
+    console.log('  hashtags:', hashtagsToSend?.substring(0, 200));
+    console.log('========== END FRONTEND SAVE DRAFT ==========\n\n');
     createPostMutation.mutate({
       title: postTitle,
       niche: selectedNiche,
       platform: selectedPlatform as any,
       contentType: selectedContentType,
-      caption: d.caption || d.fullPost,
-      hashtags: d.hashtags || d.fullSet,
+      caption: captionToSend,
+      hashtags: hashtagsToSend,
       script: d.fullScript,
       ideas: d.ideas ? JSON.stringify(d.ideas) : undefined,
       fullContent: d.fullPost || d.fullScript || d.caption,

@@ -1,48 +1,19 @@
+import { router, protectedProcedure, publicProcedure } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { NICHES, PLATFORMS } from "../shared/niches";
-import { COOKIE_NAME } from "@shared/const";
-import { getSessionCookieOptions } from "./_core/cookies";
-import { invokeLLM } from "./_core/llm";
-import { systemRouter } from "./_core/systemRouter";
-import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import {
-  addApprovalHistory,
-  addPublishLog,
   createContentPost,
-  createScheduledPost,
-  createTemplate,
-  deleteContentPost,
-  deleteScheduledPost,
-  deleteTemplate,
-  deleteSocialConnection,
-  disconnectPlatform,
-  getAllContentPosts,
-  getAllTemplates,
-  getAllUsers,
-  getAnalyticsSummary,
-  getApprovalHistoryByPost,
+  updateContentPost,
   getContentPostById,
   getContentPostsByAuthor,
-  getDefaultTemplates,
-  getPlatformConnectionWithToken,
-  getPlatformConnections,
-  getPublishLog,
+  getAllContentPosts,
+  deleteContentPost,
+  createScheduledPost,
   getScheduledPosts,
-  getSocialConnectionByPlatform,
-  getSocialConnections,
-  getTemplate,
-  getTemplatesByNiche,
-  saveSocialConnection,
-  updateContentPost,
   updateScheduledPost,
-  updateTemplate,
-  updateUserRole,
-  upsertPlatformConnection,
-  generateInviteCode,
-  listInviteCodes,
-  revokeInviteCode,
-  validateInviteCode,
+  deleteScheduledPost,
+  getConnectionWithCredentials,
+  getPlatformConnectionById,
   markInviteCodeAsUsed,
 } from "./db";
 import { publishToFacebook, publishToInstagram, publishToTikTok } from "./platformPublisher";
@@ -52,7 +23,7 @@ import { connectionsRouter } from "./connectionsRouter";
 
 // ─── Hashtag utilities ────────────────────────────────────────────────────────
 /**
- * Extract hashtags from text - returns exactly 5
+ * Extract hashtags from messy LLM output - returns exactly 5
  */
 function extractHashtags(text: string): string[] {
   if (!text) return [];
@@ -63,22 +34,61 @@ function extractHashtags(text: string): string[] {
 }
 
 /**
- * Remove hashtags from text
+ * Extract clean caption from messy LLM output
+ * Removes hashtags, URLs, metadata, and status text
+ * PRESERVES all paragraphs and line breaks
  */
-function removeHashtags(text: string): string {
+function extractCleanCaption(text: string): string {
+  console.log('[extractCleanCaption] RAW INPUT (first 500 chars):', JSON.stringify(text.substring(0, 500)));
   if (!text) return '';
-  return text
-    .split('\n')
-    .filter(line => !/^\s*#[a-zA-Z0-9_\s]*$/.test(line))
-    .join('\n')
-    .replace(/#[a-zA-Z0-9_]+/g, '')
-    .trim();
+  
+  // Remove URLs (image/video links)
+  let clean = text.replace(/https?:\/\/[^\s]+/g, '');
+  
+  // Remove hashtags
+  clean = clean.replace(/#[a-zA-Z0-9_]+\s*/g, '');
+  
+  // Remove metadata patterns (approved, pending, image, video, etc) - only as standalone words
+  clean = clean.replace(/\b(approved|pending|draft|image|video|none)\b,?\s*/gi, '');
+  
+  // Remove tone/style descriptors in parentheses
+  clean = clean.replace(/\([^)]*\)/g, '');
+  
+  // Process line by line, removing ONLY metadata lines
+  const lines = clean.split('\n');
+  const cleanedLines = lines
+    .map(line => {
+      const trimmed = line.trim();
+      
+      // Skip lines that are ONLY metadata
+      if (/^(Real|Encouraging|Relatable|Motivational|Engaging|Tips|Values)\s*(&|\()?/.test(trimmed)) return '';
+      if (/^[A-Z][a-z]+ & [a-z]+$/.test(trimmed)) return ''; // "Real & grounded"
+      
+      // Keep caption lines
+      return line;
+    })
+    .filter(line => line.trim().length > 0) // Remove empty lines
+    .join('\n');
+  
+  // Clean up multiple consecutive spaces (but preserve newlines)
+  let result = cleanedLines.replace(/ {2,}/g, ' ');
+  
+  // Remove trailing commas at end of lines
+  result = result.replace(/,\s*$/gm, '');
+  
+  // Trim overall but preserve internal structure
+  result = result.trim();
+  
+  console.log('[extractCleanCaption] CLEANED OUTPUT (first 500 chars):', JSON.stringify(result.substring(0, 500)));
+  console.log('[extractCleanCaption] Total length: input=' + text.length + ', output=' + result.length);
+  return result;
 }
 
 /**
  * Ensure exactly 5 hashtags
  */
 function normalizeHashtags(hashtags: string | string[] | undefined): string {
+  console.log('[normalizeHashtags] INPUT type:', typeof hashtags, 'value (first 200 chars):', typeof hashtags === 'string' ? hashtags.substring(0, 200) : JSON.stringify(hashtags));
   if (!hashtags) return '';
   let tags: string[] = [];
   if (typeof hashtags === 'string') {
@@ -86,69 +96,27 @@ function normalizeHashtags(hashtags: string | string[] | undefined): string {
   } else if (Array.isArray(hashtags)) {
     tags = hashtags.map(h => h.toLowerCase().startsWith('#') ? h : `#${h}`);
   }
+  console.log('[normalizeHashtags] EXTRACTED TAGS:', tags);
   tags = tags.slice(0, 5);
   while (tags.length < 5) {
     tags.push(`#tag${tags.length + 1}`);
   }
-  return tags.join(' ');
+  const result = tags.join(' ');
+  console.log('[normalizeHashtags] FINAL OUTPUT:', result, '(count:', tags.length + ')');
+  return result;
 }
 
 // ─── Admin guard ──────────────────────────────────────────────────────────────
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (ctx.user.role !== "admin") {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+    throw new TRPCError({ code: "FORBIDDEN" });
   }
   return next({ ctx });
 });
 
+// ─── Main Router ──────────────────────────────────────────────────────────────
 export const appRouter = router({
-  system: systemRouter,
-
-  // ─── Auth ────────────────────────────────────────────────────────────────
-  auth: router({
-    me: publicProcedure.query((opts) => opts.ctx.user),
-    logout: publicProcedure.mutation(({ ctx }) => {
-      const cookieOptions = getSessionCookieOptions(ctx.req);
-      ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
-      return { success: true } as const;
-    }),
-  }),
-
-  // ─── Team / Users ─────────────────────────────────────────────────────────
-  team: router({
-    list: protectedProcedure.query(async () => {
-      return getAllUsers();
-    }),
-    updateRole: adminProcedure
-      .input(z.object({ userId: z.number(), role: z.enum(["user", "admin"]) }))
-      .mutation(async ({ input }) => {
-        await updateUserRole(input.userId, input.role);
-        return { success: true };
-      }),
-    generateInviteCode: adminProcedure
-      .mutation(async ({ ctx }) => {
-        const code = await generateInviteCode(ctx.user.id);
-        return { code, success: true };
-      }),
-    listInviteCodes: adminProcedure
-      .query(async ({ ctx }) => {
-        return listInviteCodes(ctx.user.id);
-      }),
-    revokeInviteCode: adminProcedure
-      .input(z.object({ code: z.string() }))
-      .mutation(async ({ input }) => {
-        await revokeInviteCode(input.code);
-        return { success: true };
-      }),
-  }),
-
-  // ─── Niches & Platforms (static config) ──────────────────────────────────
-  config: router({
-    niches: publicProcedure.query(() => NICHES),
-    platforms: publicProcedure.query(() => PLATFORMS),
-  }),
-
-  // ─── Content Posts ────────────────────────────────────────────────────────
+  // ─── Content Management ───────────────────────────────────────────────────
   content: router({
     create: protectedProcedure
       .input(
@@ -170,8 +138,19 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const cleanCaption = input.caption ? removeHashtags(input.caption) : undefined;
+        console.log('\n\n========== SAVE DRAFT FLOW START ==========');
+        console.log('[content.create] STEP 1: FRONTEND PAYLOAD');
+        console.log('  title:', input.title);
+        console.log('  caption length:', input.caption?.length);
+        console.log('  caption preview:', input.caption?.substring(0, 200));
+        console.log('  hashtags length:', input.hashtags?.length);
+        console.log('  hashtags preview:', input.hashtags?.substring(0, 150));
+        const cleanCaption = input.caption ? extractCleanCaption(input.caption) : undefined;
         const normalizedHashtags = normalizeHashtags(input.hashtags);
+        console.log('\n[content.create] STEP 3: AFTER CLEANING');
+        console.log('  cleanCaption length:', cleanCaption?.length);
+        console.log('  cleanCaption preview:', cleanCaption?.substring(0, 200));
+        console.log('  normalizedHashtags:', normalizedHashtags);
         const dbData = {
           ...input,
           caption: cleanCaption,
@@ -180,31 +159,34 @@ export const appRouter = router({
           status: "approved" as const,
           aiGeneratedImage: input.aiGeneratedImage ? 1 : (input.aiGeneratedImage === false ? 0 : undefined),
         };
+        console.log('\n[content.create] STEP 4: DB PAYLOAD');
+        console.log('  caption to save:', dbData.caption?.substring(0, 200));
+        console.log('  hashtags to save:', dbData.hashtags);
+        
         const result = await createContentPost(dbData);
+        
+        console.log('\n[content.create] STEP 5: DATABASE RESULT');
+        console.log('  saved id:', (result as any)?.id);
+        console.log('  saved caption:', (result as any)?.caption?.substring(0, 200));
+        console.log('  saved hashtags:', (result as any)?.hashtags);
+        console.log('========== SAVE DRAFT FLOW END ==========\n\n');
+        
         return result;
       }),
 
     list: protectedProcedure
       .input(
         z.object({
-          status: z.string().optional(),
-          niche: z.string().optional(),
-          platform: z.string().optional(),
-          isLibraryItem: z.boolean().optional(),
-          myOnly: z.boolean().optional(),
-        }).optional()
+          status: z.enum(["pending", "approved", "rejected"]).optional(),
+          limit: z.number().default(50),
+          offset: z.number().default(0),
+        })
       )
       .query(async ({ ctx, input }) => {
-        if (input?.myOnly) {
-          return getContentPostsByAuthor(ctx.user.id);
-        }
-        if (ctx.user.role === "user" && !input?.isLibraryItem) {
-          return getContentPostsByAuthor(ctx.user.id);
-        }
-        return getAllContentPosts(input);
+        return getContentPostsByAuthor(ctx.user.id);
       }),
 
-    getById: protectedProcedure
+    get: protectedProcedure
       .input(z.object({ id: z.number() }))
       .query(async ({ ctx, input }) => {
         const post = await getContentPostById(input.id);
@@ -239,7 +221,7 @@ export const appRouter = router({
           throw new TRPCError({ code: "FORBIDDEN" });
         }
         const { id, ...data } = input;
-        const cleanCaption = data.caption ? removeHashtags(data.caption) : undefined;
+        const cleanCaption = data.caption ? extractCleanCaption(data.caption) : undefined;
         const normalizedHashtags = data.hashtags ? normalizeHashtags(data.hashtags) : undefined;
         const dbData = {
           ...data,
@@ -268,86 +250,37 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         const post = await getContentPostById(input.id);
         if (!post) throw new TRPCError({ code: "NOT_FOUND" });
-        if (post.authorId !== ctx.user.id && ctx.user.role !== "admin") {
+        if (ctx.user.role !== "admin" && post.authorId !== ctx.user.id) {
           throw new TRPCError({ code: "FORBIDDEN" });
         }
-        await updateContentPost(input.id, { status: "pending_review" });
-        await addApprovalHistory({ postId: input.id, reviewerId: ctx.user.id, action: "submitted" });
+        // Update post status to pending review
+        await updateContentPost(input.id, { status: 'pending_review' });
         return { success: true };
       }),
+  }),
 
-    saveToLibrary: protectedProcedure
+  // ─── Admin Approval ───────────────────────────────────────────────────────
+  admin: router({
+    approveContent: adminProcedure
       .input(z.object({ id: z.number() }))
-      .mutation(async ({ ctx, input }) => {
+      .mutation(async ({ input }) => {
         const post = await getContentPostById(input.id);
-        if (!post) throw new TRPCError({ code: "NOT_FOUND" });
-        if (post.status !== "approved" && ctx.user.role !== "admin") {
-          throw new TRPCError({ code: "FORBIDDEN", message: "Only approved posts can be saved to library" });
-        }
-        await updateContentPost(input.id, { isLibraryItem: 1 });
+        if (!post) throw new TRPCError({ code: 'NOT_FOUND' });
+        await updateContentPost(input.id, { status: 'approved' });
         return { success: true };
       }),
 
-    approvalHistory: protectedProcedure
-      .input(z.object({ postId: z.number() }))
-      .query(async ({ input }) => {
-        return getApprovalHistoryByPost(input.postId);
-      }),
-  }),
-
-  // ─── Approval Workflow ────────────────────────────────────────────────────
-  approval: router({
-    pending: adminProcedure.query(async () => {
-      return getAllContentPosts({ status: "pending_review" });
-    }),
-
-    approve: adminProcedure
-      .input(z.object({ id: z.number(), note: z.string().optional() }))
-      .mutation(async ({ ctx, input }) => {
+    rejectContent: adminProcedure
+      .input(z.object({ id: z.number(), reason: z.string() }))
+      .mutation(async ({ input }) => {
         const post = await getContentPostById(input.id);
-        if (!post) throw new TRPCError({ code: "NOT_FOUND" });
-        await updateContentPost(input.id, {
-          status: "approved",
-          approvedById: ctx.user.id,
-          approvedAt: new Date().toISOString(),
-        });
-        await addApprovalHistory({
-          postId: input.id,
-          reviewerId: ctx.user.id,
-          action: "approved",
-          note: input.note,
-        });
-        return { success: true };
-      }),
-
-    reject: adminProcedure
-      .input(z.object({ id: z.number(), note: z.string().min(1) }))
-      .mutation(async ({ ctx, input }) => {
-        await updateContentPost(input.id, { status: "rejected", rejectionNote: input.note });
-        await addApprovalHistory({
-          postId: input.id,
-          reviewerId: ctx.user.id,
-          action: "rejected",
-          note: input.note,
-        });
-        return { success: true };
-      }),
-
-    requestRevision: adminProcedure
-      .input(z.object({ id: z.number(), note: z.string().min(1) }))
-      .mutation(async ({ ctx, input }) => {
-        await updateContentPost(input.id, { status: "draft", rejectionNote: input.note });
-        await addApprovalHistory({
-          postId: input.id,
-          reviewerId: ctx.user.id,
-          action: "revision_requested",
-          note: input.note,
-        });
+        if (!post) throw new TRPCError({ code: 'NOT_FOUND' });
+        await updateContentPost(input.id, { status: 'rejected' });
         return { success: true };
       }),
   }),
 
-  // ─── AI Content Generation ────────────────────────────────────────────────
+  // ─── Generation ────────────────────────────────────────────────────────────
   generate: router({
     content: protectedProcedure
       .input(
@@ -361,637 +294,92 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input }) => {
+        const { invokeLLM } = await import("./_core/llm");
+        const { NICHES } = await import("../shared/niches");
+
         const niche = NICHES.find((n) => n.id === input.niche);
-        const platform = PLATFORMS.find((p) => p.id === input.platform);
+        if (!niche) throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid niche" });
 
-        const platformContext = platform
-          ? `Platform: ${platform.label}. Best practices: ${platform.bestPractices}`
-          : "Platform: All platforms";
+        const prompt = `You are a social media content expert. Generate engaging ${input.platform} content for the "${niche.label}" audience.
 
-        const nicheContext = niche
-          ? `Audience: ${niche.label} - ${niche.description}. Tone guide: ${niche.promptHint}`
-          : "";
+Topic: ${input.topic || "general"}
+Content Type: ${input.contentType}
+Tone: ${input.customTone || niche.tone}
+Style: ${input.contentStyle || "motivational"}
 
-        const topicContext = input.topic ? `Topic/focus: ${input.topic}` : "Choose a relevant topic for this audience";
-        const toneOverride = input.customTone ? `Additional tone instruction: ${input.customTone}` : "";
-        const styleContext = input.contentStyle ? `Content Style: ${input.contentStyle.replace(/_/g, " ")}` : "";
+Generate ONLY the content. Return a JSON object with these fields:
+{
+  "caption": "The main caption text (keep it engaging and multi-paragraph if needed)",
+  "hashtags": "Exactly 5 hashtags separated by spaces, e.g., #tag1 #tag2 #tag3 #tag4 #tag5",
+  "script": "Video script if applicable",
+  "ideas": ["idea1", "idea2", "idea3"],
+  "fullPost": "Complete post with caption and hashtags"
+}
 
-        let systemPrompt = `You are an expert social media content creator specializing in online business, digital marketing, and personal development content. You create authentic, engaging content that resonates deeply with specific audiences.
-
-${nicheContext}
-${platformContext}
-${styleContext}
-${toneOverride}
-
-Always create content that:
-- Feels authentic and human, never salesy or fake
-- Provides genuine value to the audience
-- Matches the platform's style and best practices
-- Uses the appropriate tone for the specific audience segment
-- Includes a clear call-to-action when appropriate`;
-
-        let userPrompt = "";
-        let responseSchema: any = null;
-
-        if (input.contentType === "caption") {
-          userPrompt = `${topicContext}
-
-Create an engaging social media caption for ${platform?.label || "social media"} targeting ${niche?.label || "this audience"}.
-
-Return JSON with:
-- caption: the main post caption (platform-appropriate length)
-- hook: the opening line that grabs attention
-- cta: the call-to-action
-- characterCount: approximate character count`;
-
-          responseSchema = {
-            type: "json_schema",
-            json_schema: {
-              name: "caption_result",
-              strict: true,
-              schema: {
-                type: "object",
-                properties: {
-                  caption: { type: "string" },
-                  hook: { type: "string" },
-                  cta: { type: "string" },
-                  characterCount: { type: "number" },
-                },
-                required: ["caption", "hook", "cta", "characterCount"],
-                additionalProperties: false,
-              },
-            },
-          };
-        } else if (input.contentType === "hashtags") {
-          userPrompt = `${topicContext}
-
-Generate exactly 5 hashtags for ${platform?.label || "social media"} targeting ${niche?.label || "this audience"}.
-
-IMPORTANT: These hashtags must:
-1. Match the caption style and theme of the post
-2. Reflect the tone and audience of the ${niche?.label || "audience"}
-3. Be highly relevant and authentic (not generic)
-4. Mix niche-specific and broader hashtags for reach
-5. Feel natural with the content, not forced
-6. Be EXACTLY 5 hashtags - no more, no less
-
-Return JSON with:
-- hashtags: array of exactly 5 hashtags that match the caption tone and theme
-- fullSet: all hashtags as a single string ready to post`;
-
-          responseSchema = {
-            type: "json_schema",
-            json_schema: {
-              name: "hashtags_result",
-              strict: true,
-              schema: {
-                type: "object",
-                properties: {
-                  hashtags: { type: "array", items: { type: "string" }, minItems: 5, maxItems: 5 },
-                  fullSet: { type: "string" },
-                },
-                required: ["hashtags", "fullSet"],
-                additionalProperties: false,
-              },
-            },
-          };
-        } else if (input.contentType === "script") {
-          userPrompt = `${topicContext}
-
-Write a compelling video script for ${platform?.label || "social media"} targeting ${niche?.label || "this audience"}.
-
-Return JSON with:
-- hook: opening 3-5 seconds to grab attention
-- intro: brief intro (5-10 seconds)
-- mainContent: the core message broken into sections (array of strings)
-- cta: closing call-to-action
-- estimatedDuration: estimated video length in seconds
-- fullScript: complete script as one string`;
-
-          responseSchema = {
-            type: "json_schema",
-            json_schema: {
-              name: "script_result",
-              strict: true,
-              schema: {
-                type: "object",
-                properties: {
-                  hook: { type: "string" },
-                  intro: { type: "string" },
-                  mainContent: { type: "array", items: { type: "string" } },
-                  cta: { type: "string" },
-                  estimatedDuration: { type: "number" },
-                  fullScript: { type: "string" },
-                },
-                required: ["hook", "intro", "mainContent", "cta", "estimatedDuration", "fullScript"],
-                additionalProperties: false,
-              },
-            },
-          };
-        } else if (input.contentType === "ideas") {
-          userPrompt = `${topicContext}
-
-Generate 8 creative content ideas for ${platform?.label || "social media"} targeting ${niche?.label || "this audience"}.
-
-Return JSON with:
-- ideas: array of 8 objects, each with title, description, contentFormat (post/reel/story/carousel), and engagementTip`;
-
-          responseSchema = {
-            type: "json_schema",
-            json_schema: {
-              name: "ideas_result",
-              strict: true,
-              schema: {
-                type: "object",
-                properties: {
-                  ideas: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        title: { type: "string" },
-                        description: { type: "string" },
-                        contentFormat: { type: "string" },
-                        engagementTip: { type: "string" },
-                      },
-                      required: ["title", "description", "contentFormat", "engagementTip"],
-                      additionalProperties: false,
-                    },
-                  },
-                },
-                required: ["ideas"],
-                additionalProperties: false,
-              },
-            },
-          };
-        } else {
-          // full_post
-          userPrompt = `${topicContext}
-
-Create a complete, ready-to-publish social media post for ${platform?.label || "social media"} targeting ${niche?.label || "this audience"}.
-
-Return JSON with:
-- caption: the main post caption
-- hook: opening hook line
-- hashtags: relevant hashtags as a single string
-- cta: call-to-action
-- postIdea: brief description of accompanying visual/video
-- fullPost: the complete formatted post ready to copy-paste`;
-
-          responseSchema = {
-            type: "json_schema",
-            json_schema: {
-              name: "full_post_result",
-              strict: true,
-              schema: {
-                type: "object",
-                properties: {
-                  caption: { type: "string" },
-                  hook: { type: "string" },
-                  hashtags: { type: "string" },
-                  cta: { type: "string" },
-                  postIdea: { type: "string" },
-                  fullPost: { type: "string" },
-                },
-                required: ["caption", "hook", "hashtags", "cta", "postIdea", "fullPost"],
-                additionalProperties: false,
-              },
-            },
-          };
-        }
+Do NOT include metadata, status, image URLs, or tone descriptors in the output.`;
 
         const response = await invokeLLM({
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
-          ],
-          response_format: responseSchema,
-        });
-
-        const rawContent = response.choices[0]?.message?.content ?? "{}";
-        const parsed = JSON.parse(typeof rawContent === "string" ? rawContent : JSON.stringify(rawContent));
-        return { contentType: input.contentType, data: parsed };
-      }),
-  }),
-
-  // ─── Scheduling (moved to scheduleRouter) ───────────────────────────────────
-  // Old schedule router removed - now using dedicated scheduleRouter
-
-  // ─── Publishing ───────────────────────────────────────────────────────
-  publish: router({
-    platforms: protectedProcedure.query(async ({ ctx }) => {
-      return getPlatformConnections(ctx.user.id);
-    }),
-
-    connectPlatform: protectedProcedure
-      .input(
-        z.object({
-          platform: z.enum(["facebook", "instagram", "tiktok"]),
-          accountName: z.string(),
-          accessToken: z.string(),
-          // Instagram: Instagram Business Account ID
-          // Facebook: Page ID
-          // TikTok: not required (token is sufficient)
-          accountId: z.string().optional(),
-        })
-      )
-      .mutation(async ({ ctx, input }) => {
-        await upsertPlatformConnection({
-          userId: ctx.user.id,
-          platform: input.platform,
-          accountName: input.accountName,
-          accountId: input.accountId,
-          accessToken: input.accessToken,
-          isActive: true,
-        });
-        return { success: true };
-      }),
-
-    disconnectPlatform: protectedProcedure
-      .input(z.object({ platform: z.enum(["facebook", "instagram", "tiktok"]) }))
-      .mutation(async ({ ctx, input }) => {
-        await disconnectPlatform(ctx.user.id, input.platform);
-        return { success: true };
-      }),
-
-    testConnection: protectedProcedure
-      .input(z.object({ platform: z.enum(["facebook", "instagram", "tiktok"]) }))
-      .mutation(async ({ ctx, input }) => {
-        const conn = await getPlatformConnectionWithToken(ctx.user.id, input.platform);
-        if (!conn || !conn.accessToken) {
-          return { success: false, message: "No credentials saved for this platform" };
-        }
-        try {
-          if (input.platform === "instagram") {
-            const res = await fetch(
-              `https://graph.instagram.com/v21.0/me?fields=id,username&access_token=${conn.accessToken}`
-            );
-            const data = await res.json() as any;
-            if (data.error) return { success: false, message: data.error.message };
-            return { success: true, message: `Connected as @${data.username}` };
-          } else if (input.platform === "facebook") {
-            const pageId = conn.accountId;
-            const res = await fetch(
-              `https://graph.facebook.com/v21.0/${pageId}?fields=id,name&access_token=${conn.accessToken}`
-            );
-            const data = await res.json() as any;
-            if (data.error) return { success: false, message: data.error.message };
-            return { success: true, message: `Connected to page: ${data.name}` };
-          } else {
-            // TikTok: verify token
-            const res = await fetch("https://open.tiktokapis.com/v2/user/info/?fields=display_name", {
-              headers: { Authorization: `Bearer ${conn.accessToken}` },
-            });
-            const data = await res.json() as any;
-            if (data.error?.code !== "ok") return { success: false, message: data.error?.message ?? "TikTok auth failed" };
-            return { success: true, message: `Connected as ${data.data?.user?.display_name ?? "TikTok user"}` };
-          }
-        } catch (e: any) {
-          return { success: false, message: e?.message ?? "Connection test failed" };
-        }
-      }),
-
-
-    post: protectedProcedure
-      .input(
-        z.object({
-          postId: z.number(),
-          platforms: z.array(z.enum(["facebook", "instagram", "tiktok"])),
-        })
-      )
-      .mutation(async ({ ctx, input }) => {
-        const post = await getContentPostById(input.postId);
-        if (!post) throw new TRPCError({ code: "NOT_FOUND" });
-        if (post.status !== "approved") {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "Only approved posts can be published" });
-        }
-
-        const results: { platform: string; success: boolean; errorMessage?: string; platformPostId?: string }[] = [];
-
-        for (const platform of input.platforms) {
-          const conn = await getPlatformConnectionWithToken(ctx.user.id, platform);
-
-          if (!conn || !conn.accessToken) {
-            results.push({ platform, success: false, errorMessage: `No ${platform} account connected. Please connect your account in Platform Settings.` });
-            await addPublishLog({
-              postId: input.postId,
-              publishedById: ctx.user.id,
-              platform,
-              status: "failed",
-              errorMessage: "No credentials configured",
-            });
-            continue;
-          }
-
-          let result;
-          if (platform === "instagram") {
-            result = await publishToInstagram(post, {
-              accessToken: conn.accessToken,
-              accountId: conn.accountId ?? "",
-            });
-          } else if (platform === "facebook") {
-            result = await publishToFacebook(post, {
-              accessToken: conn.accessToken,
-              pageId: conn.accountId ?? "",
-            });
-          } else {
-            result = await publishToTikTok(post, { accessToken: conn.accessToken });
-          }
-
-          await addPublishLog({
-            postId: input.postId,
-            publishedById: ctx.user.id,
-            platform,
-            status: result.success ? "success" : "failed",
-            platformPostId: result.platformPostId,
-            errorMessage: result.errorMessage,
-          });
-
-          results.push({ platform, success: result.success, errorMessage: result.errorMessage, platformPostId: result.platformPostId });
-        }
-
-        const anySuccess = results.some((r) => r.success);
-        if (anySuccess) {
-          await updateContentPost(input.postId, { status: "published", publishedAt: new Date().toISOString() });
-        }
-
-        return { results };
-      }),
-
-    log: protectedProcedure
-      .input(z.object({ postId: z.number().optional() }))
-      .query(async ({ input }) => {
-        return getPublishLog(input.postId);
-      }),
-    schedule: protectedProcedure
-      .input(
-        z.object({
-          postId: z.number(),
-          platforms: z.array(z.enum(["facebook", "instagram", "tiktok"])),
-          scheduledAt: z.date(),
-        })
-      )
-      .mutation(async ({ ctx, input }) => {
-        const post = await getContentPostById(input.postId);
-        if (!post) throw new TRPCError({ code: "NOT_FOUND" });
-        if (post.status !== "approved") {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "Only approved posts can be scheduled" });
-        }
-
-        // Frontend already converted to UTC, use as-is
-        const scheduledAtISO = input.scheduledAt.toISOString();
-        const now = new Date();
-        
-        console.log('[publish.schedule] Received:', {
-          scheduledAt: scheduledAtISO,
-          now: now.toISOString(),
-          diffMs: input.scheduledAt.getTime() - now.getTime(),
-        });
-
-        // Create scheduled posts for each platform
-        for (const platform of input.platforms) {
-          await createScheduledPost({
-            postId: input.postId,
-            scheduledById: ctx.user.id,
-            platform: platform as any,
-            scheduledAt: scheduledAtISO,
-            status: "scheduled",
-          });
-        }
-
-        // Update post with scheduled time
-        await updateContentPost(input.postId, { scheduledAt: input.scheduledAt.toISOString() });
-
-        return { success: true, message: `Post scheduled for ${input.scheduledAt.toLocaleString()}` };
-      }),
-  }),
-
-  // ─── Media & Images ──────────────────────────────────────────────────────────
-  media: router({
-    generateImage: protectedProcedure
-      .input(
-        z.object({
-          caption: z.string(),
-          niche: z.enum(["time_freedom", "parents", "side_hustlers", "online_business", "cultural", "over_50", "scam_survivors"]),
-          tone: z.string().optional(),
-        })
-      )
-      .mutation(async ({ input }) => {
-        const result = await generateAIImage(input.caption, input.niche, input.tone);
-        if (!result.success) {
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error || "Failed to generate image" });
-        }
-        return { url: result.url, success: true };
-      }),
-    uploadImage: protectedProcedure
-      .input(
-        z.object({
-          fileData: z.string(),
-          fileName: z.string(),
-          mimeType: z.string(),
-        })
-      )
-      .mutation(async ({ ctx, input }) => {
-        const fileBuffer = Buffer.from(input.fileData, "base64");
-        const validation = validateUploadedFile(fileBuffer, input.mimeType);
-        if (!validation.valid) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: validation.error || "Invalid file" });
-        }
-        const result = await uploadMediaFile(fileBuffer, input.fileName, input.mimeType, ctx.user.id);
-        if (!result.success) {
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error || "Failed to upload file" });
-        }
-        return { url: result.url, success: true };
-      }),
-  }),
-
-  // ─── Content Templates ────────────────────────────────────────────────────
-  templates: router({
-    list: protectedProcedure.query(async () => {
-      return getAllTemplates();
-    }),
-    listByNiche: protectedProcedure
-      .input(z.object({ niche: z.string() }))
-      .query(async ({ input }) => {
-        return getTemplatesByNiche(input.niche);
-      }),
-    defaults: protectedProcedure.query(async () => {
-      return getDefaultTemplates();
-    }),
-    get: protectedProcedure
-      .input(z.object({ id: z.number() }))
-      .query(async ({ input }) => {
-        return getTemplate(input.id);
-      }),
-    create: adminProcedure
-      .input(
-        z.object({
-          name: z.string(),
-          description: z.string().optional(),
-          niche: z.enum(["time_freedom", "parents", "side_hustlers", "online_business", "cultural", "over_50", "scam_survivors"]),
-          category: z.string(),
-          prompt: z.string(),
-          exampleContent: z.string().optional(),
-          isDefault: z.boolean().optional(),
-        })
-      )
-      .mutation(async ({ ctx, input }) => {
-        await createTemplate({
-          ...input,
-          createdById: ctx.user.id,
-          isDefault: input.isDefault ? 1 : 0,
-        });
-        return { success: true };
-      }),
-    update: adminProcedure
-      .input(
-        z.object({
-          id: z.number(),
-          name: z.string().optional(),
-          description: z.string().optional(),
-          category: z.string().optional(),
-          prompt: z.string().optional(),
-          exampleContent: z.string().optional(),
-        })
-      )
-      .mutation(async ({ input }) => {
-        const { id, ...data } = input;
-        await updateTemplate(id, data);
-        return { success: true };
-      }),
-    delete: adminProcedure
-      .input(z.object({ id: z.number() }))
-      .mutation(async ({ input }) => {
-        await deleteTemplate(input.id);
-        return { success: true };
-      }),
-  }),
-
-  // ─── Bulk Generation ──────────────────────────────────────────────────────
-  bulk: router({
-    generate: protectedProcedure
-      .input(
-        z.object({
-          templateId: z.number().optional(),
-          niche: z.enum(["time_freedom", "parents", "side_hustlers", "online_business", "cultural", "over_50", "scam_survivors"]),
-          platform: z.enum(["facebook", "instagram", "tiktok", "all"]),
-          tone: z.string().optional(),
-          customPrompt: z.string().optional(),
-          count: z.number().min(1).max(20),
-        })
-      )
-      .mutation(async ({ ctx, input }) => {
-        let prompt = input.customPrompt || "";
-        if (input.templateId) {
-          const template = await getTemplate(input.templateId);
-          if (template) prompt = template.prompt;
-        }
-        if (!prompt) throw new TRPCError({ code: "BAD_REQUEST", message: "No prompt provided" });
-
-        const posts = [];
-        for (let i = 0; i < input.count; i++) {
-          const response = await invokeLLM({
-            messages: [
-              {
-                role: "system",
-                content: `You are a social media content creator for the "${input.niche}" audience niche. Create engaging, authentic content. Tone: ${input.tone || "professional and engaging"}. Generate a social media post with caption (max 300 chars), exactly 5 hashtags matching the caption style, and a brief script idea.`,
-              },
-              {
-                role: "user",
-                content: `${prompt}
-
-Generate post #${i + 1}. Return JSON with: {"caption": "...", "hashtags": "#tag1 #tag2 #tag3 #tag4 #tag5", "script": "...", "ideas": "..."}`,
-              },
-            ],
-            response_format: {
-              type: "json_schema",
-              json_schema: {
-                name: "social_post",
-                strict: true,
-                schema: {
-                  type: "object",
-                  properties: {
-                    caption: { type: "string" },
-                    hashtags: { type: "string" },
-                    script: { type: "string" },
-                    ideas: { type: "string" },
-                  },
-                  required: ["caption", "hashtags", "script", "ideas"],
-                  additionalProperties: false,
+          messages: [{ role: "user", content: prompt }],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "content",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: {
+                  caption: { type: "string" },
+                  hashtags: { type: "string" },
+                  script: { type: "string" },
+                  ideas: { type: "array", items: { type: "string" } },
+                  fullPost: { type: "string" },
                 },
+                required: ["caption", "hashtags"],
               },
             },
-          });
-
-          const msgContent = response.choices[0]?.message.content;
-          const contentStr = typeof msgContent === 'string' ? msgContent : JSON.stringify(msgContent);
-          const content = JSON.parse(contentStr || "{}");
-          const post = await createContentPost({
-            authorId: ctx.user.id,
-            title: content.caption?.substring(0, 100) || "Bulk Generated Post",
-            niche: input.niche as any,
-            platform: input.platform as any,
-            contentType: "full_post",
-            caption: content.caption,
-            hashtags: content.hashtags,
-            script: content.script,
-            ideas: content.ideas,
-            tone: input.tone,
-            status: "approved",
-          });
-          posts.push(post);
-        }
-
-        return { success: true, posts, count: posts.length };
-      }),
-  }),
-
-  // ─── Social Connections (Per-User Credentials) ──────────────────────────────
-  socialConnections: router({
-    list: protectedProcedure.query(async ({ ctx }) => {
-      return getSocialConnections(ctx.user.id);
-    }),
-    save: protectedProcedure
-      .input(
-        z.object({
-          platform: z.enum(["facebook", "instagram", "tiktok"]),
-          accessToken: z.string().min(1, "Access token is required"),
-          platformUserId: z.string().min(1, "Platform user ID is required"),
-          platformUsername: z.string().optional(),
-        })
-      )
-      .mutation(async ({ ctx, input }) => {
-        await saveSocialConnection({
-          userId: ctx.user.id,
-          platform: input.platform,
-          accessToken: input.accessToken,
-          platformUserId: input.platformUserId,
-          platformUsername: input.platformUsername,
-          isActive: 1,
-          connectedAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
+          },
         });
-        return { success: true };
-      }),
-    delete: protectedProcedure
-      .input(z.object({ platform: z.enum(["facebook", "instagram", "tiktok"]) }))
-      .mutation(async ({ ctx, input }) => {
-        await deleteSocialConnection(ctx.user.id, input.platform);
-        return { success: true };
+
+        const messageContent = response.choices[0].message.content;
+        const contentStr = typeof messageContent === 'string' ? messageContent : JSON.stringify(messageContent);
+        const content = JSON.parse(contentStr);
+        return { data: content };
       }),
   }),
 
-  // ─── Analytics ────────────────────────────────────────────────────────────
-  analytics: router({
-    summary: protectedProcedure.query(async () => {
-      return getAnalyticsSummary();
+  // ─── Media ────────────────────────────────────────────────────────────────
+  media: router({
+    generateImage: protectedProcedure
+      .input(z.object({ prompt: z.string() }))
+      .mutation(async ({ input }) => {
+        const { generateImage } = await import("./_core/imageGeneration");
+        const result = await generateImage({ prompt: input.prompt });
+        return result;
+      }),
+
+    uploadFile: protectedProcedure
+      .input(z.object({ fileName: z.string(), fileData: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        const buffer = Buffer.from(input.fileData, "base64");
+        const result = await uploadMediaFile(buffer, input.fileName, "application/octet-stream", ctx.user.id);
+        return result;
+      }),
+  }),
+
+  // ─── Auth ──────────────────────────────────────────────────────────────────
+  auth: router({
+    me: protectedProcedure.query(async ({ ctx }) => {
+      return ctx.user;
+    }),
+
+    logout: protectedProcedure.mutation(async ({ ctx }) => {
+      ctx.res?.clearCookie("session");
+      return { success: true };
     }),
   }),
 
-  // ─── Scheduling & Direct Publishing ────────────────────────────────────────
+  // ─── Nested Routers ───────────────────────────────────────────────────────
   schedule: scheduleRouter,
-
-  // ─── Platform Connections (OAuth) ────────────────────────────────────────
   connections: connectionsRouter,
 });
 
