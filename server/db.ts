@@ -52,65 +52,47 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   console.log("[upsertUser] Starting upsert with openId:", user.openId);
   console.log("[upsertUser] User data:", JSON.stringify(user, null, 2));
 
-
-  // No existing user found by email, proceed with normal upsert by openId
+  // Build values object
   const values: InsertUser = { openId: user.openId };
-  const updateSet: Record<string, unknown> = {};
-
+  
   const textFields = ["name", "email", "loginMethod"] as const;
   for (const field of textFields) {
     const value = user[field];
-    if (value === undefined) continue;
-    const normalized = value ?? null;
-    values[field] = normalized;
-    updateSet[field] = normalized;
+    if (value !== undefined) {
+      values[field] = value ?? null;
+    }
   }
 
   if (user.lastSignedIn !== undefined) {
     values.lastSignedIn = user.lastSignedIn;
-    updateSet.lastSignedIn = user.lastSignedIn;
   }
+  
   if (user.role !== undefined) {
     values.role = user.role;
-    updateSet.role = user.role;
   } else {
-    // All users are admins - everyone can publish their own content independently
     values.role = "admin";
-    updateSet.role = "admin";
   }
 
-  if (!values.lastSignedIn) values.lastSignedIn = new Date().toISOString();
-  if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date().toISOString();
-
-  console.log("[upsertUser] Final insert values:", JSON.stringify(values, null, 2));
-  console.log("[upsertUser] Final update set:", JSON.stringify(updateSet, null, 2));
-
-  // Check if user already exists by openId
-  try {
-    const existingUser = await db.select().from(users).where(eq(users.openId, user.openId)).limit(1);
-    
-    if (existingUser.length > 0) {
-      console.log("[upsertUser] User already exists with openId:", user.openId, "- updating instead of inserting");
-      // User exists, just update them
-      await db.update(users).set(updateSet).where(eq(users.openId, user.openId));
-      console.log("[upsertUser] Updated existing user with openId:", user.openId);
-      return;
-    }
-  } catch (checkError) {
-    console.error("[upsertUser] Error checking for existing user:", checkError);
-    // Continue with insert if check fails
+  if (!values.lastSignedIn) {
+    values.lastSignedIn = new Date().toISOString();
   }
 
-  // Explicitly exclude id field - it should be auto-generated
-  const { id, ...valuesWithoutId } = values as any;
-  console.log("[upsertUser] Values without id:", JSON.stringify(valuesWithoutId, null, 2));
+  console.log("[upsertUser] Final values:", JSON.stringify(values, null, 2));
 
   try {
-    console.log("[upsertUser] Inserting new user with openId:", user.openId);
-    await db.insert(users).values(valuesWithoutId);
-    console.log("[upsertUser] Insert successful for openId:", user.openId);
+    // Use raw SQL for upsert to avoid Drizzle ORM issues
+    const result = await db.execute(
+      sql`INSERT INTO users (openId, name, email, loginMethod, role, lastSignedIn, autoPublishAfterGenerate)
+          VALUES (${values.openId}, ${values.name || null}, ${values.email || null}, ${values.loginMethod || null}, ${values.role}, ${values.lastSignedIn}, 0)
+          ON DUPLICATE KEY UPDATE
+          name = VALUES(name),
+          email = VALUES(email),
+          loginMethod = VALUES(loginMethod),
+          lastSignedIn = VALUES(lastSignedIn)`
+    );
+    console.log("[upsertUser] Upsert successful for openId:", user.openId);
   } catch (error) {
-    console.error("[upsertUser] Insert failed for openId:", user.openId);
+    console.error("[upsertUser] Upsert failed for openId:", user.openId);
     console.error("[upsertUser] Error:", error);
     console.error("[upsertUser] Error message:", error instanceof Error ? error.message : String(error));
     console.error("[upsertUser] Error stack:", error instanceof Error ? error.stack : "no stack");
