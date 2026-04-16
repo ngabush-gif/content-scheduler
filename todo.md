@@ -240,6 +240,14 @@
 - [ ] Capture actual callback logs to verify session/user resolution works
 
 
+## Facebook OAuth Redirect URI - FIXED
+- [x] Identify hardcoded redirect URI mismatch (was 'your-app.manus.space', should be 'contenthub-zayg9ao8.manus.space')
+- [x] Update FACEBOOK_REDIRECT_URI environment variable
+- [x] Restart dev server with new configuration
+- [ ] Test Facebook OAuth callback end-to-end
+- [ ] Verify user can sign in via Facebook and reach dashboard
+- [ ] Verify Facebook connection is saved to database
+
 ## Manus OAuth Callback Sign-In - CRITICAL BUG
 - [ ] Trace Manus OAuth callback flow and identify upsert failure
 - [ ] Log exact upsert payload and database error details

@@ -19,13 +19,13 @@ export default function FacebookCallback() {
 
   // Handle callback mutation
   const handleCallbackMutation = trpc.connections.handleFacebookCallback.useMutation({
-    onSuccess: (data) => {
+    onSuccess: (data: any) => {
       setSuccess(true);
       setTimeout(() => {
         setLocation("/connections");
       }, 2000);
     },
-    onError: (error) => {
+    onError: (error: any) => {
       setError(error.message || "Failed to connect Facebook page");
     },
   });
