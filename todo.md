@@ -193,13 +193,13 @@
 - [x] Add Instagram OAuth callback route to Express server
 - [x] Update Connections page with Instagram OAuth UI
 - [x] Token validation before publish (already implemented)
-- [ ] Test Instagram publish end-to-end with valid token
-- [ ] Verify post appears on Instagram
+- [ ] Test Instagram publish end-to-end with valid token (implementation ready, needs valid credentials)
+- [ ] Verify post appears on Instagram (implementation ready, needs valid credentials)
 
-### Basic Scheduling (NEXT)
-- [ ] Implement date/time picker for scheduled publishing
-- [ ] Create publishing queue for scheduled posts
-- [ ] Test scheduling and automatic publishing
+### Basic Scheduling (COMPLETED)
+- [x] Implement date/time picker for scheduled publishing (Luxon timezone refactoring)
+- [x] Create publishing queue for scheduled posts (publishing worker with atomic job claiming)
+- [x] Test scheduling and automatic publishing (verified on Samsung S25 Chrome)
 
 ### Low-Priority Items (Can Be Done Later)
 - [ ] TikTok publishing implementation
@@ -208,3 +208,12 @@
 - [ ] Team collaboration features
 - [ ] Multi-language content generation
 - [ ] Video content support
+
+
+## CloudFront 403 Error - BLOCKING ISSUE
+- [x] Diagnose CloudFront routing configuration (root cause: catch-all route intercepting /api/*)
+- [x] Identify why /api/* requests return 403 error (serveStatic() catch-all was sending index.html)
+- [x] Implement fix for API routing in production (modified serveStatic to skip /api/* routes)
+- [ ] Test all API endpoints on published domain
+- [ ] Verify OAuth callbacks work on production
+- [ ] Verify publishing works on production
