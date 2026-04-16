@@ -23,7 +23,7 @@ export const contentPosts = mysqlTable("content_posts", {
 	ideas: text(),
 	fullContent: text(),
 	tone: varchar({ length: 100 }),
-	status: mysqlEnum(['draft','pending_review','approved','rejected','published']).default('draft').notNull(),
+	status: mysqlEnum(['draft','pending_review','approved','rejected','published','failed']).default('draft').notNull(),
 	rejectionNote: text(),
 	approvedById: int(),
 	approvedAt: timestamp({ mode: 'string' }),
@@ -38,6 +38,8 @@ export const contentPosts = mysqlTable("content_posts", {
 	mediaType: mysqlEnum(['none','image','video']).default('none').notNull(),
 	contentStyle: mysqlEnum(['motivational','engagement','personal_story','curiosity','opportunity','tips_values']),
 	imagePrompt: text(),
+	remotePostId: varchar({ length: 255 }),
+	lastError: text(),
 });
 
 export const contentTemplates = mysqlTable("content_templates", {

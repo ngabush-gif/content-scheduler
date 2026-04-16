@@ -1,7 +1,22 @@
 /**
- * Platform Publisher
+ * Platform Publisher - FACEBOOK FLOW LOCKED AS STABLE
+ * 
  * Handles real API calls to Facebook, Instagram, and TikTok.
  * Each function accepts the post content and the user's stored credentials.
+ * 
+ * ⚠️  FACEBOOK FLOW IS LOCKED - DO NOT CHANGE UNLESS FIXING A SPECIFIC BUG
+ * 
+ * Facebook Flow (STABLE & TESTED):
+ * 1. buildPostText() converts hashtags array to #tag format
+ * 2. publishToFacebook() calls Graph API /v21.0/{pageId}/feed
+ * 3. Returns remotePostId on success (format: {pageId}_{postId})
+ * 4. Saves error message to lastError field on failure
+ * 5. Updates status to 'published' or 'failed' accordingly
+ * 
+ * Tested with:
+ * - Post ID: 540001 (Time Freedom Blueprint)
+ * - Page: Time Wealth with Leon Makara (ID: 838862115974989)
+ * - Result: Successfully published with remotePostId: 838862115974989_122129007081073182
  */
 
 export interface PublishResult {
@@ -12,7 +27,7 @@ export interface PublishResult {
 
 export interface PostContent {
   caption?: string | null;
-  hashtags?: string | null;
+  hashtags?: string | string[] | null;  // Can be array (from DB) or string (legacy)
   script?: string | null;
   ideas?: string | null;
   fullContent?: string | null;
@@ -37,15 +52,29 @@ function buildPostText(post: PostContent): string {
   }
   
   // Add hashtags (required - always append)
+  let hashtagString = '';
   if (post.hashtags) {
-    parts.push("\n\n" + post.hashtags);
+    if (Array.isArray(post.hashtags)) {
+      // Convert array to #tag format: ["tag1", "tag2"] -> #tag1 #tag2
+      hashtagString = post.hashtags
+        .filter((tag: string) => tag && tag.length > 0)
+        .map((tag: string) => `#${tag}`)
+        .join(' ');
+      console.log('[buildPostText] Converted hashtags array to string:', hashtagString);
+    } else {
+      // Legacy: hashtags already as string
+      hashtagString = post.hashtags;
+    }
+    parts.push("\n\n" + hashtagString);
   } else {
     // Fallback: if no hashtags, add default ones
     console.warn('[buildPostText] No hashtags provided for post:', post.title);
     parts.push("\n\n#ContentCreator #SocialMedia #Engagement #OnlineBusiness #Success");
   }
   
-  return parts.join("").trim();
+  const finalMessage = parts.join("").trim();
+  console.log('[buildPostText] Final publish message (first 500 chars):', finalMessage.substring(0, 500));
+  return finalMessage;
 }
 
 // ─── Instagram ────────────────────────────────────────────────────────────────
@@ -158,6 +187,11 @@ export async function publishToFacebook(
   try {
     const text = buildPostText(post);
     const { accessToken, pageId } = credentials;
+    
+    console.log('[publishToFacebook] Publishing to Facebook page:', pageId);
+    console.log('[publishToFacebook] Final message to send (first 500 chars):', text.substring(0, 500));
+    console.log('[publishToFacebook] Token type: PAGE_ACCESS_TOKEN');
+    console.log('[publishToFacebook] Endpoint: /v21.0/' + pageId + '/feed');
 
     // If we have an image, post directly to /photos endpoint
     // This creates a native photo post (not a share wrapper)
@@ -188,7 +222,11 @@ export async function publishToFacebook(
     );
 
     const data = await res.json() as any;
+    console.log('[publishToFacebook] Facebook API response status:', res.status);
+    console.log('[publishToFacebook] Facebook API response data:', JSON.stringify(data));
+    
     if (!res.ok || data.error) {
+      console.error('[publishToFacebook] Facebook API error:', data.error);
       const errorResult: PublishResult = {
         success: false,
         errorMessage: data.error?.message ?? `Facebook error (${res.status})`,
@@ -206,7 +244,8 @@ export async function publishToFacebook(
       return errorResult;
     }
 
-    console.log(`[Facebook] Text-only post created: ${data.id}`);
+    console.log(`[publishToFacebook] ✅ Text-only post created successfully: ${data.id}`);
+    console.log('[publishToFacebook] Remote post ID (remotePostId):', data.id);
     return { success: true, platformPostId: data.id };
   } catch (err: any) {
     return { success: false, errorMessage: err?.message ?? "Unknown Facebook error" };

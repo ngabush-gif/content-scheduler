@@ -247,7 +247,17 @@ function PostDetail({ post, onSubmit, onDelete, onSaveToLibrary, isSubmitting, i
         <div>
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Hashtags</p>
           <div className="bg-background/50 rounded-lg p-3 border border-border/30">
-            <p className="text-sm text-primary/80">{post.hashtags}</p>
+            {Array.isArray(post.hashtags) ? (
+              <div className="flex flex-wrap gap-2">
+                {post.hashtags.map((tag: string, idx: number) => (
+                  <Badge key={idx} variant="secondary" className="text-xs">
+                    {tag}
+                  </Badge>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-primary/80">{post.hashtags}</p>
+            )}
           </div>
         </div>
       )}

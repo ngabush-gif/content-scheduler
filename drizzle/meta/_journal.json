@@ -71,6 +71,13 @@
       "when": 1776324334420,
       "tag": "0009_pink_phalanx",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1776335842258,
+      "tag": "0010_black_ken_ellis",
+      "breakpoints": true
     }
   ]
 }

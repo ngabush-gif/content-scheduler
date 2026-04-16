@@ -131,40 +131,78 @@ export async function createContentPost(data: InsertContentPost) {
   
   console.log('[createContentPost] INSERT PAYLOAD:', JSON.stringify(insertPayload, null, 2));
   
-  // Remove imagePrompt temporarily since migration hasn't been applied
-  delete insertPayload.imagePrompt;
-  
   try {
-    // Insert using Drizzle ORM
-    await db.insert(contentPosts).values(insertPayload as any);
+    // Use Drizzle's sql tagged template for raw SQL execution
+    const fieldList = Object.keys(insertPayload);
+    let valueList = Object.values(insertPayload);
+    
+    // Serialize hashtags array to JSON string for database storage
+    valueList = valueList.map((val, idx) => {
+      const field = fieldList[idx];
+      if (field === 'hashtags' && Array.isArray(val)) {
+        return JSON.stringify(val);
+      }
+      return val;
+    });
+    
+    // Create the insert query using raw SQL with placeholders
+    const insertQuery = `INSERT INTO \`content_posts\` (${fieldList.map(f => `\`${f}\``).join(', ')}) VALUES (${fieldList.map(() => '?').join(', ')})`;
+    console.log('[createContentPost] FINAL INSERT QUERY:', insertQuery);
+    console.log('[createContentPost] FINAL VALUES (serialized):', valueList);
+    
+    // Execute using Drizzle's execute method with raw SQL
+    // Note: We need to use the connection pool directly for parameterized queries
+    // Get the underlying connection from the drizzle instance
+    const connection = (db as any).session.client;
+    const [result] = await connection.execute(insertQuery, valueList);
+    console.log('[createContentPost] INSERT RESULT:', result);
     console.log('[createContentPost] INSERT QUERY EXECUTED');
     
     // Query the inserted row
-    const result = await db.select().from(contentPosts)
+    const rows = await db.select().from(contentPosts)
       .where(eq(contentPosts.authorId, insertPayload.authorId))
       .orderBy(desc(contentPosts.createdAt))
       .limit(1);
     
-    console.log('[createContentPost] INSERT SUCCESS - Returned row id:', result[0]?.id);
-    console.log('[createContentPost] FULL ROW:', JSON.stringify(result[0], null, 2));
-    return result[0];
+    console.log('[createContentPost] INSERT SUCCESS - Returned row id:', rows[0]?.id);
+    console.log('[createContentPost] FULL ROW:', JSON.stringify(rows[0], null, 2));
+    return rows[0];
   } catch (error) {
     console.error('[createContentPost] INSERT FAILED - Error:', error);
     throw error;
   }
 }
 
+// Helper function to deserialize content post hashtags from JSON string to array
+// Handles both new JSON format and legacy space-separated format
+function deserializeContentPost(post: any) {
+  if (!post) return post;
+  if (typeof post.hashtags === 'string') {
+    try {
+      // Try parsing as JSON first (new format)
+      post.hashtags = JSON.parse(post.hashtags);
+    } catch (e) {
+      // If JSON parse fails, assume it's space-separated (legacy format)
+      // Split by spaces and filter out empty strings
+      const tags = post.hashtags.trim().split(/\s+/).filter((tag: string) => tag.length > 0);
+      post.hashtags = tags;
+    }
+  }
+  return post;
+}
+
 export async function getContentPostById(id: number) {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select().from(contentPosts).where(eq(contentPosts.id, id)).limit(1);
-  return result[0];
+  return deserializeContentPost(result[0]);
 }
 
 export async function getContentPostsByAuthor(authorId: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(contentPosts).where(eq(contentPosts.authorId, authorId)).orderBy(desc(contentPosts.createdAt));
+  const result = await db.select().from(contentPosts).where(eq(contentPosts.authorId, authorId)).orderBy(desc(contentPosts.createdAt));
+  return result.map(deserializeContentPost);
 }
 
 export async function getAllContentPosts(filters?: {
@@ -183,10 +221,13 @@ export async function getAllContentPosts(filters?: {
   if (filters?.isLibraryItem !== undefined) conditions.push(eq(contentPosts.isLibraryItem, filters.isLibraryItem ? 1 : 0));
 
   const query = db.select().from(contentPosts);
+  let result;
   if (conditions.length > 0) {
-    return query.where(and(...conditions)).orderBy(desc(contentPosts.createdAt));
+    result = await query.where(and(...conditions)).orderBy(desc(contentPosts.createdAt));
+  } else {
+    result = await query.orderBy(desc(contentPosts.createdAt));
   }
-  return query.orderBy(desc(contentPosts.createdAt));
+  return result.map(deserializeContentPost);
 }
 
 export async function updateContentPost(id: number, data: Partial<InsertContentPost>) {
