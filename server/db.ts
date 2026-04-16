@@ -131,8 +131,11 @@ export async function createContentPost(data: InsertContentPost) {
   
   console.log('[createContentPost] INSERT PAYLOAD:', JSON.stringify(insertPayload, null, 2));
   
+  // Remove imagePrompt temporarily since migration hasn't been applied
+  delete insertPayload.imagePrompt;
+  
   try {
-    // Insert without id field - Drizzle should auto-generate it
+    // Insert using Drizzle ORM
     await db.insert(contentPosts).values(insertPayload as any);
     console.log('[createContentPost] INSERT QUERY EXECUTED');
     

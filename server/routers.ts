@@ -153,9 +153,9 @@ export const appRouter = router({
           niche: input.niche,
           platform: input.platform,
           contentType: input.contentType,
-          status: "approved" as const,
+          status: "draft" as const,
           caption: input.caption,
-          hashtags: input.hashtags,
+          hashtags: Array.isArray(input.hashtags) ? input.hashtags : (typeof input.hashtags === 'string' ? input.hashtags.split(' ') : []),
           imagePrompt: input.imagePrompt,
           script: input.script,
           ideas: input.ideas,
@@ -173,7 +173,7 @@ export const appRouter = router({
         
         console.log('\n[content.create] STEP 2: FINAL DB PAYLOAD (no cleanup applied)');
         console.log('  caption:', dbData.caption?.substring(0, 300));
-        console.log('  hashtags:', dbData.hashtags);
+        console.log('  hashtags (type):', typeof dbData.hashtags, 'value:', JSON.stringify(dbData.hashtags));
         console.log('  imagePrompt:', dbData.imagePrompt?.substring(0, 300));
         
         const result = await createContentPost(dbData);
