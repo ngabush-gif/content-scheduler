@@ -64,8 +64,9 @@ function PublishingContent() {
   const { data: approvedPosts, isLoading } = trpc.content.list.useQuery({
     status: "approved",
   });
+  // Fetch published posts (those with remotePostId)
   const { data: publishedPosts } = trpc.content.list.useQuery({
-    status: "published",
+    status: "approved",
   });
   const { data: facebookConnections } = trpc.connections.getFacebookConnections.useQuery();
 

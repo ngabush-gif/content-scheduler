@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { trpc } from '@/lib/trpc';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
@@ -10,12 +10,14 @@ export default function Settings() {
   const [isLoading, setIsLoading] = useState(true);
 
   // Fetch current settings
-  const { data: settings } = trpc.settings.getSettings.useQuery(undefined, {
-    onSuccess: (data) => {
-      setAutoPublish(data.autoPublishAfterGenerate);
+  const { data: settings } = trpc.settings.getSettings.useQuery();
+
+  useEffect(() => {
+    if (settings) {
+      setAutoPublish(settings.autoPublishAfterGenerate);
       setIsLoading(false);
-    },
-  });
+    }
+  }, [settings]);
 
   // Toggle auto-publish
   const toggleMutation = trpc.settings.toggleAutoPublish.useMutation({

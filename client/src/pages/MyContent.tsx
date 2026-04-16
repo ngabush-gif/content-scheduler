@@ -214,7 +214,7 @@ function MyContentView() {
 function PostDetail({ post, onSubmit, onDelete, onSaveToLibrary, isSubmitting, isDeleting }: any) {
   const niche = NICHES.find((n) => n.id === post.niche);
   const statusCfg = STATUS_CONFIG[post.status as keyof typeof STATUS_CONFIG];
-  const { data: history } = trpc.content.approvalHistory.useQuery({ postId: post.id });
+  // Approval history removed - not needed for current flow
 
   return (
     <div className="space-y-4">
@@ -331,28 +331,7 @@ function PostDetail({ post, onSubmit, onDelete, onSaveToLibrary, isSubmitting, i
         </div>
       )}
 
-      {/* Approval History */}
-      {history && history.length > 0 && (
-        <div>
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">History</p>
-          <div className="space-y-2">
-            {history.map((h: any) => (
-              <div key={h.id} className="flex items-start gap-2 text-xs">
-                <div className={`w-2 h-2 rounded-full mt-1 shrink-0 ${
-                  h.action === "approved" ? "bg-green-400" :
-                  h.action === "rejected" ? "bg-red-400" :
-                  "bg-primary/60"
-                }`} />
-                <div>
-                  <span className="font-medium capitalize">{h.action.replace("_", " ")}</span>
-                  {h.note && <span className="text-muted-foreground ml-1">— {h.note}</span>}
-                  <span className="text-muted-foreground/60 ml-2">{new Date(h.createdAt).toLocaleString()}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Approval History - Removed */}
 
       {/* Actions */}
       <div className="flex flex-wrap gap-2 pt-2 border-t border-border/50">

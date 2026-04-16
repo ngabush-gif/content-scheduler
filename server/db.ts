@@ -291,7 +291,7 @@ export async function createScheduledPost(data: InsertScheduledPost): Promise<{ 
 export async function getScheduledPostsByAuthor(authorId: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(scheduledPosts).where(eq(scheduledPosts.authorId, authorId)).orderBy(desc(scheduledPosts.scheduledAt));
+  return db.select().from(scheduledPosts).where(eq(scheduledPosts.scheduledById, authorId)).orderBy(desc(scheduledPosts.scheduledAt));
 }
 
 export async function getScheduledPostById(id: number) {
@@ -345,10 +345,14 @@ export async function getPlatformConnectionsByUserId(userId: number) {
   return db.select().from(platformConnections).where(eq(platformConnections.userId, userId));
 }
 
-export async function getPlatformConnectionById(id: number) {
+export async function getPlatformConnectionById(id: number, userId?: number) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(platformConnections).where(eq(platformConnections.id, id)).limit(1);
+  const conditions = [eq(platformConnections.id, id)];
+  if (userId !== undefined) {
+    conditions.push(eq(platformConnections.userId, userId));
+  }
+  const result = await db.select().from(platformConnections).where(and(...conditions)).limit(1);
   return result[0];
 }
 
