@@ -104,8 +104,13 @@ export async function updateUserRole(userId: number, role: "user" | "admin") {
 export async function createContentPost(data: InsertContentPost) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
-  const [result] = await db.insert(contentPosts).values(data).$returningId();
-  return result;
+  const { id, ...dataWithoutId } = data as any;
+  await db.insert(contentPosts).values(dataWithoutId);
+  const result = await db.select().from(contentPosts)
+    .where(eq(contentPosts.authorId, dataWithoutId.authorId))
+    .orderBy(desc(contentPosts.createdAt))
+    .limit(1);
+  return result[0];
 }
 
 export async function getContentPostById(id: number) {

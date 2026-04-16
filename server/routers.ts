@@ -147,12 +147,29 @@ export const appRouter = router({
         console.log('  imagePrompt:', input.imagePrompt?.substring(0, 300));
         
         // NO CLEANUP - fields are already clean from frontend
-        const dbData = {
-          ...input,
+        const dbData: any = {
           authorId: ctx.user.id,
+          title: input.title,
+          niche: input.niche,
+          platform: input.platform,
+          contentType: input.contentType,
           status: "approved" as const,
+          caption: input.caption,
+          hashtags: input.hashtags,
+          imagePrompt: input.imagePrompt,
+          script: input.script,
+          ideas: input.ideas,
+          fullContent: input.fullContent,
+          tone: input.tone,
+          tags: input.tags,
+          imageUrl: input.imageUrl,
           aiGeneratedImage: input.aiGeneratedImage ? 1 : (input.aiGeneratedImage === false ? 0 : undefined),
+          mediaType: input.mediaType,
         };
+        // Remove undefined fields to avoid database errors
+        Object.keys(dbData).forEach((key: string) => {
+          if (dbData[key] === undefined) delete dbData[key];
+        });
         
         console.log('\n[content.create] STEP 2: FINAL DB PAYLOAD (no cleanup applied)');
         console.log('  caption:', dbData.caption?.substring(0, 300));
