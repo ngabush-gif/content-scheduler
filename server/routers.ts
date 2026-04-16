@@ -153,7 +153,7 @@ export const appRouter = router({
           niche: input.niche,
           platform: input.platform,
           contentType: input.contentType,
-          status: "draft" as const,
+          status: "approved" as const,
           caption: input.caption,
           hashtags: Array.isArray(input.hashtags) ? input.hashtags : (typeof input.hashtags === 'string' ? input.hashtags.split(' ') : []),
           imagePrompt: input.imagePrompt,

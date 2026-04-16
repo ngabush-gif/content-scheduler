@@ -132,7 +132,7 @@ function GeneratorContent() {
     onSuccess: (data) => {
       setSavedPostId((data as any)?.id ?? null);
       utils.content.list.invalidate();
-      toast.success("Content saved as draft!");
+      toast.success("Content created and ready to publish!");
     },
     onError: (err) => toast.error("Save failed: " + err.message),
   });
@@ -140,7 +140,7 @@ function GeneratorContent() {
   const submitMutation = trpc.content.submitForReview.useMutation({
     onSuccess: () => {
       utils.content.list.invalidate();
-      toast.success("Submitted for review!");
+      toast.success("Content submitted!");
       setLocation("/my-content");
     },
     onError: (err) => toast.error(err.message),
@@ -563,6 +563,9 @@ function GeneratorContent() {
                     setImageUrl(url);
                     setIsAiGenerated(isAi);
                   }}
+                  caption={generatedContent.data?.caption}
+                  niche={selectedNiche || undefined}
+                  tone={customTone || undefined}
                 />
 
                 <div className="flex gap-2 pt-4">
