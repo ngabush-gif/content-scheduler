@@ -245,18 +245,18 @@
 ## Facebook Publishing Reliability Hardening (IN PROGRESS)
 
 ### Phase 1: Retry Logic & Timeout Protection
-- [ ] Implement max 2 retries for failed publishes
-- [ ] Add exponential backoff (60s, 120s, 240s)
-- [ ] Add 30-second timeout per publish attempt
-- [ ] Auto-mark jobs stuck in "publishing" for >2 minutes as "failed"
-- [ ] Log every publish attempt with timestamp and result
+- [x] Implement max 2 retries for failed publishes
+- [x] Add exponential backoff (60s, 120s, 240s)
+- [x] Add 30-second timeout per publish attempt
+- [x] Auto-mark jobs stuck in "publishing" for >2 minutes as "failed"
+- [x] Log every publish attempt with timestamp and result
 - [ ] Test retry logic with network failures
 
 ### Phase 2: Status & Recovery
-- [ ] Verify all jobs end in: scheduled, publishing, published, or failed
-- [ ] Ensure lastError is always populated on failure
-- [ ] Add manual retry button for failed jobs (in UI)
-- [ ] Add cancel/delete button for scheduled jobs (in UI)
+- [x] Verify all jobs end in: scheduled, publishing, published, or failed
+- [x] Ensure lastError is always populated on failure
+- [x] Add manual retry button for failed jobs (in UI)
+- [x] Add cancel/delete button for scheduled jobs (in UI)
 - [ ] Test status transitions with multiple scenarios
 
 ### Phase 3: Facebook Production Cleanup
@@ -267,12 +267,12 @@
 - [ ] Clean up test posts from development
 
 ### Phase 4: UI/UX Improvements
-- [ ] Add clear status badges (Scheduled, Publishing, Published, Failed)
+- [x] Add clear status badges (Scheduled, Publishing, Published, Failed)
 - [ ] Show connection/page name in post list
-- [ ] Show published timestamp for successful posts
-- [ ] Show failed reason inline with error details
-- [ ] Add retry/cancel buttons with confirmation dialogs
-- [ ] Improve visual hierarchy and readability
+- [x] Show published timestamp for successful posts
+- [x] Show failed reason inline with error details
+- [x] Add retry/cancel buttons with confirmation dialogs
+- [x] Improve visual hierarchy and readability
 
 ### Phase 5: Testing & Documentation
 - [ ] Run reliability test with 5+ posts at staggered times
