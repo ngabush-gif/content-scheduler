@@ -52,36 +52,6 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   console.log("[upsertUser] Starting upsert with openId:", user.openId);
   console.log("[upsertUser] User data:", JSON.stringify(user, null, 2));
 
-  // If email is provided, check if user already exists by email
-  // This handles the case where a user signed up with email/password
-  // and is now signing in via Manus OAuth
-  if (user.email) {
-    console.log("[upsertUser] Checking for existing user with email:", user.email);
-    try {
-      const existingUser = await db.select().from(users).where(eq(users.email, user.email)).limit(1);
-      
-      if (existingUser.length > 0) {
-        console.log("[upsertUser] Found existing user by email, updating openId and other fields");
-        const existingId = existingUser[0].id;
-        
-        // Update the existing user with new openId and other fields
-        const updateData: any = {
-          openId: user.openId,
-          lastSignedIn: user.lastSignedIn || new Date().toISOString(),
-        };
-        
-        if (user.name !== undefined) updateData.name = user.name ?? null;
-        if (user.loginMethod !== undefined) updateData.loginMethod = user.loginMethod ?? null;
-        
-        await db.update(users).set(updateData).where(eq(users.id, existingId));
-        console.log("[upsertUser] Updated existing user:", existingId);
-        return;
-      }
-    } catch (error) {
-      console.error("[upsertUser] Error checking for existing email user:", error);
-      // Continue with normal upsert if email check fails
-    }
-  }
 
   // No existing user found by email, proceed with normal upsert by openId
   const values: InsertUser = { openId: user.openId };
@@ -115,8 +85,12 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   console.log("[upsertUser] Final insert values:", JSON.stringify(values, null, 2));
   console.log("[upsertUser] Final update set:", JSON.stringify(updateSet, null, 2));
 
+  // Explicitly exclude id field - it should be auto-generated
+  const { id, ...valuesWithoutId } = values as any;
+  console.log("[upsertUser] Values without id:", JSON.stringify(valuesWithoutId, null, 2));
+
   try {
-    await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
+    await db.insert(users).values(valuesWithoutId).onDuplicateKeyUpdate({ set: updateSet });
     console.log("[upsertUser] Upsert successful for openId:", user.openId);
   } catch (error) {
     console.error("[upsertUser] Upsert failed for openId:", user.openId);
