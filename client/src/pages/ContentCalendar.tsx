@@ -71,6 +71,14 @@ function CalendarContent() {
     onError: (e) => toast.error(e.message),
   });
 
+  const retryMutation = trpc.schedule.retry.useMutation({
+    onSuccess: () => {
+      toast.success("Post queued for retry");
+      utils.schedule.list.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   const handleSchedule = () => {
     if (!scheduleModal?.post) {
       toast.error("Please select a post to schedule");
@@ -195,36 +203,73 @@ function CalendarContent() {
                 const statusColor = statusColors[post.status] || 'bg-gray-100 text-gray-800';
                 
                 return (
-                  <div key={post.id} className="flex flex-col p-3 border rounded-lg">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3 flex-1">
+                  <div key={post.id} className="flex flex-col p-3 border rounded-lg hover:bg-gray-50">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
                         {post.imageUrl && (
-                          <img src={post.imageUrl} alt="" className="w-12 h-12 rounded object-cover" />
+                          <img src={post.imageUrl} alt="" className="w-12 h-12 rounded object-cover flex-shrink-0" />
                         )}
-                        <div className="flex-1">
-                          <p className="font-medium">{post.title}</p>
-                          <p className="text-sm text-gray-500">
-                            {post.platform} • {new Date(post.scheduledAt).toLocaleString()}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">{post.title}</p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            <span className="font-medium">{post.platform}</span>
+                            {post.connectionName && <span> • {post.connectionName}</span>}
                           </p>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            Scheduled: {new Date(post.scheduledAt).toLocaleString()}
+                          </p>
+                          {post.publishedAt && (
+                            <p className="text-xs text-green-600 mt-0.5">
+                              Published: {new Date(post.publishedAt).toLocaleString()}
+                            </p>
+                          )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1 flex-shrink-0">
                         <span className={`px-2 py-1 rounded text-xs font-medium whitespace-nowrap ${statusColor}`}>
                           {post.status.charAt(0).toUpperCase() + post.status.slice(1)}
                         </span>
+                      </div>
+                    </div>
+                    
+                    {/* Error message for failed posts */}
+                    {post.status === 'failed' && post.lastError && (
+                      <div className="bg-red-50 p-2 rounded mt-2 mb-2">
+                        <p className="text-xs text-red-700">⚠️ {post.lastError}</p>
+                      </div>
+                    )}
+                    
+                    {/* Action buttons */}
+                    <div className="flex gap-2 justify-end mt-2">
+                      {post.status === 'failed' && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => retryMutation.mutate({ id: post.id })}
+                          disabled={retryMutation.isPending}
+                          className="text-xs"
+                        >
+                          {retryMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                          Retry
+                        </Button>
+                      )}
+                      {(post.status === 'scheduled' || post.status === 'failed') && (
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => deleteMutation.mutate({ id: post.id })}
+                          onClick={() => {
+                            if (confirm('Cancel this scheduled post?')) {
+                              deleteMutation.mutate({ id: post.id });
+                            }
+                          }}
                           disabled={deleteMutation.isPending}
+                          className="text-xs"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          {deleteMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Trash2 className="w-3 h-3" />}
+                          Cancel
                         </Button>
-                      </div>
+                      )}
                     </div>
-                    {post.status === 'failed' && post.lastError && (
-                      <p className="text-sm text-red-600 mt-2 ml-15">⚠️ Error: {post.lastError}</p>
-                    )}
                   </div>
                 );
               })}

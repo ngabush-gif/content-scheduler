@@ -1,27 +1,21 @@
-import { getDb, getConnectionWithCredentials } from "../db";
-import { scheduledPosts, publishingJobs, contentPosts, platformConnections } from "../../drizzle/schema";
-import { eq, and, lte, or, isNull } from "drizzle-orm";
-import { publishToFacebookPage, publishToInstagram } from "../platformPublisher";
-import { refreshPageToken } from "../facebookOAuth";
+import { getDb, getConnectionWithCredentials, getContentPostById } from "../db";
+import { scheduledPosts, platformConnections, publishLog } from "../../drizzle/schema";
+import { eq, and, lte } from "drizzle-orm";
 
-/**
- * Publishing Worker: Atomic Job Claiming with Database Locking
- * 
- * Ensures:
- * - No duplicate publishing (atomic claim with database lock)
- * - Exponential backoff for retries
- * - Proper error classification (retryable vs permanent)
- * - Token expiration detection
- * - Comprehensive logging
- */
+import { publishToFacebookPage, publishToInstagram } from "../platformPublisher";
+import { getTokenInfo, refreshPageToken } from "../facebookOAuth";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface PublishingContext {
   scheduledPostId: number;
   postId: number;
   userId: number;
-  connectionId: number | null;
+  connectionId: number;
   platform: "facebook" | "instagram" | "tiktok";
-  pageId?: string | null;
+  pageId?: string;
   scheduledAt: Date;
 }
 
@@ -31,151 +25,143 @@ interface PublishResult {
   errorMessage?: string;
   errorCode?: string;
   isRetryable?: boolean;
-  isAuthError?: boolean;
 }
 
 interface ErrorClassification {
   code: string;
   message: string;
   isRetryable: boolean;
-  isAuthError: boolean;
-  httpStatus?: number;
+  isAuthError?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ATOMIC JOB CLAIMING WITH DATABASE LOCK
+// MAIN PUBLISHING LOOP
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Claim a single scheduled post for publishing using atomic database lock
- * 
- * This ensures that even with multiple worker instances, each job is claimed
- * exactly once and transitioned to "publishing" state atomically.
- * 
- * Returns null if no jobs available or if claiming fails.
- */
-async function claimScheduledPost(): Promise<PublishingContext | null> {
-  try {
-    const db = await getDb() as any;
-    if (!db) return null;
-    
-    // Find ONE post ready to publish (status = scheduled, scheduledAt <= now, not in retry window)
-    const now = new Date();
-    const nowISO = now.toISOString();
-    const bufferTime = new Date(now.getTime() + 15 * 60 * 1000).toISOString();
-    
-    console.log(`[PW] Checking posts at ${nowISO} (with 15min buffer)`);
-    
-    // Get all scheduled posts and filter in JavaScript
-    const allScheduledPosts = await db.select().from(scheduledPosts).where(
-      eq(scheduledPosts.status, "scheduled" as any)
-    ).limit(10);
-    
-    // Filter for posts ready to publish (scheduledAt <= now)
-    // Frontend now uses Luxon to correctly convert AEST -> UTC, so no offset correction needed
-    const readyPosts = allScheduledPosts.filter((p: any) => {
-      const storedDate = new Date(p.scheduledAt);
-      const isReady = storedDate <= now && (p.nextRetryAt === null || p.nextRetryAt <= nowISO);
-      console.log(`[PW] Post ${p.id}: ScheduledAt=${p.scheduledAt}, Now=${nowISO}, Ready=${isReady}`);
-      return isReady;
-    }).slice(0, 1);
+export async function startPublishingWorker(): Promise<void> {
+  console.log("[PublishingWorker] Starting publishing worker...");
 
-    if (!readyPosts.length) {
-      const upcoming = await db.select().from(scheduledPosts).where(
-        eq(scheduledPosts.status, "scheduled" as any)
-      ).limit(1);
-      if (upcoming.length > 0) {
-        const p = upcoming[0];
-        const storedDate = new Date(p.scheduledAt);
-        const diff = storedDate.getTime() - now.getTime();
-        console.log(`[PW] Next post ID ${p.id}:`);
-        console.log(`[PW]   ScheduledAt: ${p.scheduledAt}`);
-        console.log(`[PW]   Current UTC: ${nowISO}`);
-        console.log(`[PW]   Difference: ${Math.round(diff/1000)}s away`);
-      }
-      return null;
+  // Run immediately, then every 60 seconds
+  await executePublishingJobs();
+
+  setInterval(async () => {
+    try {
+      await executePublishingJobs();
+    } catch (error) {
+      console.error("[PublishingWorker] Cycle error:", error);
     }
+  }, 60000);
+}
 
-    const post = readyPosts[0];
-
-    // ATOMIC CLAIM: Update to "publishing" status ONLY if still "scheduled"
-    // This prevents race condition where multiple workers claim the same job
-    // If another worker already claimed it, the update will affect 0 rows
-    const updateResult = await db
-      .update(scheduledPosts)
-      .set({
-        status: "publishing" as any,
-        publishingStartedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      })
-      .where(and(
-        eq(scheduledPosts.id, post.id),
-        eq(scheduledPosts.status, "scheduled" as any)  // Only update if still scheduled
-      ));
-
-    // Check if claim was successful
-    const rowsAffected = (updateResult as any).rowsAffected || 0;
-    if (rowsAffected === 0) {
-      console.log(`[PW] Post ${post.id} already claimed by another worker. Skipping.`);
-      return null;  // Another worker already claimed this job
-    }
-
-    console.log(`[PW] ✅ Successfully claimed post ${post.id} for publishing`);
-
-    return {
-      scheduledPostId: post.id,
-      postId: post.postId,
-      userId: post.scheduledById,
-      connectionId: post.connectionId,
-      platform: post.platform as "facebook" | "instagram" | "tiktok",
-      pageId: post.pageId || undefined,
-      scheduledAt: new Date(post.scheduledAt),
-    };
-  } catch (error) {
-    console.error("[PublishingWorker] Error claiming job:", {
-      error: error instanceof Error ? error.message : String(error),
-      timestamp: new Date().toISOString(),
-    });
-    return null;
+async function executePublishingJobs(): Promise<void> {
+  const db = await getDb() as any;
+  if (!db) {
+    console.error("[PublishingWorker] DB unavailable");
+    return;
   }
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MAIN JOB EXECUTOR LOOP
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Main job executor: runs every 60 seconds
- * Processes up to 5 jobs per cycle to avoid overwhelming the system
- */
-export async function executePublishingJobs(): Promise<void> {
   const cycleStartTime = new Date();
+  const processedCount = { count: 0 };
+  const successCount = { count: 0 };
+  const errorCount = { count: 0 };
+
   console.log(`[PublishingWorker] Cycle started at ${cycleStartTime.toISOString()}`);
 
-  let processedCount = 0;
-  let successCount = 0;
-  let errorCount = 0;
+  // RECOVERY: Reset jobs stuck in "publishing" for >2 minutes
+  const stuckThreshold = new Date(Date.now() - 2 * 60 * 1000); // 2 minutes ago
+  try {
+    const stuckJobs = await db.select().from(scheduledPosts).where(
+      and(
+        eq(scheduledPosts.status, "publishing" as any),
+        lte(scheduledPosts.publishingStartedAt, stuckThreshold.toISOString())
+      )
+    ).limit(10);
 
-  // Process up to 5 jobs per cycle
-  for (let i = 0; i < 5; i++) {
-    const job = await claimScheduledPost();
-    if (!job) {
-      // No more jobs available
-      break;
+    for (const job of stuckJobs) {
+      console.warn(`[PublishingWorker] 🔄 Recovering stuck job ${job.id} (stuck for >2 minutes)`);
+      await db
+        .update(scheduledPosts)
+        .set({
+          status: "failed",
+          lastError: "Publishing timeout: job stuck in publishing state for >2 minutes",
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(scheduledPosts.id, job.id));
+      errorCount.count++;
     }
+  } catch (recoveryErr) {
+    console.error("[PublishingWorker] Recovery logic error:", recoveryErr);
+  }
 
-    processedCount++;
+  // Get scheduled posts ready to publish
+  const now = new Date();
+  const nowISO = now.toISOString();
 
-    try {
-      await publishScheduledPost(job);
-      successCount++;
-    } catch (error) {
-      console.error(`[PublishingWorker] Unhandled error in job ${job.scheduledPostId}:`, {
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-      });
-      errorCount++;
+  console.log(`[PW] Checking posts at ${nowISO} (with 15min buffer)`);
+
+  const allScheduledPosts = await db
+    .select()
+    .from(scheduledPosts)
+    .where(
+      eq(scheduledPosts.status, "scheduled" as any)
+    ).limit(10);
+
+  // Filter for posts ready to publish (scheduledAt <= now)
+  // Frontend now uses Luxon to correctly convert AEST -> UTC, so no offset correction needed
+  // IMPORTANT: scheduledAt is stored as MySQL TIMESTAMP string (e.g., "2026-04-16 04:36:00")
+  // We must parse it as UTC, not local time
+  const readyPosts = allScheduledPosts.filter((p: any) => {
+    // Parse the string timestamp as UTC by appending Z
+    const scheduledAtStr = typeof p.scheduledAt === 'string' ? p.scheduledAt : p.scheduledAt?.toString?.() || '';
+    const scheduledAtUTC = scheduledAtStr.includes('T')
+      ? new Date(scheduledAtStr)  // Already ISO format
+      : new Date(scheduledAtStr + 'Z');  // MySQL format, append Z to parse as UTC
+
+    const nextRetryDate = p.nextRetryAt ? (typeof p.nextRetryAt === 'string' ? new Date(p.nextRetryAt.includes('T') ? p.nextRetryAt : p.nextRetryAt + 'Z') : p.nextRetryAt) : null;
+    const isReady = scheduledAtUTC <= now && (nextRetryDate === null || nextRetryDate <= now);
+    console.log(`[PW] Post ${p.id}: ScheduledAt=${p.scheduledAt}, ScheduledAtUTC=${scheduledAtUTC.toISOString()}, Now=${nowISO}, Ready=${isReady}`);
+    return isReady;
+  }).slice(0, 1);
+
+  if (!readyPosts.length) {
+    const upcoming = await db.select().from(scheduledPosts).where(
+      eq(scheduledPosts.status, "scheduled" as any)
+    ).limit(1);
+    if (upcoming.length > 0) {
+      const p = upcoming[0];
+      // Parse the string timestamp as UTC
+      const scheduledAtStr = typeof p.scheduledAt === 'string' ? p.scheduledAt : p.scheduledAt?.toString?.() || '';
+      const storedDateUTC = scheduledAtStr.includes('T')
+        ? new Date(scheduledAtStr)
+        : new Date(scheduledAtStr + 'Z');
+      const diff = storedDateUTC.getTime() - now.getTime();
+      console.log(`[PW] Next post ID ${p.id}:`);
+      console.log(`[PW]   ScheduledAt: ${p.scheduledAt}`);
+      console.log(`[PW]   ScheduledAt (UTC): ${storedDateUTC.toISOString()}`);
+      console.log(`[PW]   Current UTC: ${nowISO}`);
+      console.log(`[PW]   Difference: ${Math.round(diff/1000)}s away`);
     }
+    return;
+  }
+
+  // Try to claim the first ready post
+  const post = readyPosts[0];
+  const claimedPost = await claimScheduledPost(post.id);
+
+  if (!claimedPost) {
+    console.log(`[PW] Post ${post.id} already claimed by another worker. Skipping.`);
+    return;
+  }
+
+  processedCount.count++;
+
+  // Publish the claimed post
+  try {
+    await publishScheduledPost(claimedPost);
+    successCount.count++;
+  } catch (error) {
+    console.error(`[PublishingWorker] Publishing error for post ${claimedPost.scheduledPostId}:`, error);
+    errorCount.count++;
   }
 
   const cycleEndTime = new Date();
@@ -183,11 +169,68 @@ export async function executePublishingJobs(): Promise<void> {
 
   console.log(`[PublishingWorker] Cycle completed`, {
     timestamp: cycleEndTime.toISOString(),
-    processed: processedCount,
-    successful: successCount,
-    failed: errorCount,
+    processed: processedCount.count,
+    successful: successCount.count,
+    failed: errorCount.count,
     durationMs,
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLAIM A SCHEDULED POST (ATOMIC)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function claimScheduledPost(postId: number): Promise<PublishingContext | null> {
+  const db = await getDb() as any;
+  if (!db) {
+    console.error("[PublishingWorker] DB unavailable");
+    return null;
+  }
+
+  // Atomic compare-and-swap: only update if status is still "scheduled"
+  const updateResult = await db
+    .update(scheduledPosts)
+    .set({
+      status: "publishing",
+      publishingStartedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
+    .where(and(
+      eq(scheduledPosts.id, postId),
+      eq(scheduledPosts.status, "scheduled" as any)
+    ));
+
+  if ((updateResult as any).rowsAffected === 0) {
+    console.log(`[PW] Post ${postId} already claimed by another worker. Skipping.`);
+    return null;  // Another worker already claimed this job
+  }
+
+  // Fetch the post to return context
+  const posts = await db.select().from(scheduledPosts).where(eq(scheduledPosts.id, postId)).limit(1);
+  const post = posts[0];
+
+  if (!post) {
+    console.error(`[PW] Post ${postId} not found after claiming`);
+    return null;
+  }
+
+  console.log(`[PW] ✅ Claimed post ${postId} for publishing`);
+
+  // Parse scheduledAt as UTC
+  const scheduledAtStr = typeof post.scheduledAt === 'string' ? post.scheduledAt : post.scheduledAt?.toString?.() || '';
+  const scheduledAtUTC = scheduledAtStr.includes('T')
+    ? new Date(scheduledAtStr)
+    : new Date(scheduledAtStr + 'Z');
+
+  return {
+    scheduledPostId: post.id,
+    postId: post.postId,
+    userId: post.scheduledById,
+    connectionId: post.connectionId,
+    platform: post.platform as any,
+    pageId: post.pageId,
+    scheduledAt: scheduledAtUTC,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -203,13 +246,13 @@ async function publishScheduledPost(context: PublishingContext): Promise<void> {
     console.error("[PublishingWorker] DB unavailable");
     return;
   }
-  // Note: createPublishingJob is a local function defined below
-  const jobId = await createPublishingJob(context);
+
+  const publishStartTime = Date.now();
+  const PUBLISH_TIMEOUT_MS = 30000; // 30 second timeout
 
   try {
-    console.log(`[PublishingWorker] Publishing post ${context.postId} to ${context.platform}`, {
+    console.log(`[PublishingWorker] 🚀 Starting publish for post ${context.postId} to ${context.platform}`, {
       scheduledPostId: context.scheduledPostId,
-      jobId,
     });
 
     // Step 1: Get post content
@@ -234,8 +277,23 @@ async function publishScheduledPost(context: PublishingContext): Promise<void> {
       throw new Error("No access token found for connection");
     }
 
-    // Step 2.5: Refresh token if needed (for Facebook)
+    // Step 2.5: Log token context and refresh if needed (for Facebook)
     let accessToken = connection.accessToken;
+
+    // Log token details for debugging
+    const tokenInfo = await getTokenInfo(accessToken);
+    console.log(`[PublishingWorker] Token Context:`, {
+      connectionId: context.connectionId,
+      platform: context.platform,
+      pageId: context.pageId,
+      accountId: connection.accountId,
+      tokenType: tokenInfo?.type,
+      tokenValid: tokenInfo?.isValid,
+      tokenExpires: tokenInfo?.expiresAt,
+      tokenScopes: tokenInfo?.scopes,
+      tokenError: tokenInfo?.error,
+    });
+
     if (context.platform === "facebook" && context.pageId) {
       console.log(`[PublishingWorker] Attempting to refresh Facebook token for page ${context.pageId}...`);
       const refreshedToken = await refreshPageToken(accessToken, context.pageId);
@@ -253,35 +311,84 @@ async function publishScheduledPost(context: PublishingContext): Promise<void> {
     }
 
     // Step 3: Check if already published (prevent duplicates on retry)
-    // Skip if:
-    // 1. Scheduled post already has remotePostId (means it was published)
-    // 2. Scheduled post status is already 'published'
     const scheduledPost = await db.select().from(scheduledPosts).where(eq(scheduledPosts.id, context.scheduledPostId)).limit(1);
     const currentScheduledPost = scheduledPost[0];
-    
+
     if (currentScheduledPost?.remotePostId || currentScheduledPost?.status === 'published') {
       console.log(`[PublishingWorker] ⏭️  Post ${context.postId} already published. Skipping duplicate publish.`, {
         scheduledPostId: context.scheduledPostId,
         remotePostId: currentScheduledPost?.remotePostId,
         status: currentScheduledPost?.status,
       });
+      // Mark as published if not already
+      if (currentScheduledPost?.status !== 'published') {
+        await db
+          .update(scheduledPosts)
+          .set({
+            status: "published",
+            publishedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(scheduledPosts.id, context.scheduledPostId));
+      }
       return;  // Already published, skip
     }
 
-    // Step 4: Publish to platform
+    // Step 4: Publish to platform with timeout protection
     let result: PublishResult;
 
     if (context.platform === "facebook") {
-      result = await publishToFacebookPage(post, {
-        accessToken: accessToken,
-        pageId: context.pageId || connection.accountId || "",
+      const fbPageId = context.pageId || connection.accountId || "";
+      console.log(`[PublishingWorker] 🚀 Starting Facebook publish with:`, {
+        pageId: fbPageId,
+        connectionAccountId: connection.accountId,
+        postId: context.postId,
+        scheduledPostId: context.scheduledPostId,
       });
+
+      // Wrap in timeout promise
+      const publishPromise = publishToFacebookPage(post, {
+        accessToken: accessToken,
+        pageId: fbPageId,
+      });
+
+      const timeoutPromise = new Promise<PublishResult>((_, reject) =>
+        setTimeout(() => reject(new Error('Facebook publish timeout (>30s)')), PUBLISH_TIMEOUT_MS)
+      );
+
+      try {
+        result = await Promise.race([publishPromise, timeoutPromise]);
+        console.log(`[PublishingWorker] ✅ Facebook publish succeeded`);
+      } catch (timeoutErr: any) {
+        console.error(`[PublishingWorker] ❌ Facebook publish failed:`, timeoutErr.message);
+        throw timeoutErr;
+      }
     } else if (context.platform === "instagram") {
-      // Instagram publishing via Facebook Graph API (Instagram is owned by Meta)
-      result = await publishToInstagram(post, {
-        accessToken: accessToken,
-        accountId: context.pageId || connection.accountId || "",
+      // Instagram publishing via Facebook Graph API
+      const igAccountId = context.pageId || connection.accountId || "";
+      console.log(`[PublishingWorker] 🚀 Starting Instagram publish with:`, {
+        accountId: igAccountId,
+        connectionAccountId: connection.accountId,
+        postId: context.postId,
+        scheduledPostId: context.scheduledPostId,
       });
+
+      const publishPromise = publishToInstagram(post, {
+        accessToken: accessToken,
+        accountId: igAccountId,
+      });
+
+      const timeoutPromise = new Promise<PublishResult>((_, reject) =>
+        setTimeout(() => reject(new Error('Instagram publish timeout (>30s)')), PUBLISH_TIMEOUT_MS)
+      );
+
+      try {
+        result = await Promise.race([publishPromise, timeoutPromise]);
+        console.log(`[PublishingWorker] ✅ Instagram publish succeeded`);
+      } catch (timeoutErr: any) {
+        console.error(`[PublishingWorker] ❌ Instagram publish failed:`, timeoutErr.message);
+        throw timeoutErr;
+      }
     } else if (context.platform === "tiktok") {
       // TikTok publishing not yet implemented
       result = {
@@ -295,15 +402,15 @@ async function publishScheduledPost(context: PublishingContext): Promise<void> {
     }
 
     // Step 5: Handle result
+    console.log(`[PublishingWorker] Publish result:`, {
+      success: result.success,
+      platformPostId: result.platformPostId,
+      errorMessage: result.errorMessage,
+      errorCode: result.errorCode,
+    });
+
     if (result.success && result.platformPostId) {
       // SUCCESS: Mark as published
-      // Note: updatePublishingJob is a local function defined below
-      await updatePublishingJob(jobId, {
-        status: "success",
-        completedAt: new Date(),
-        remotePostId: result.platformPostId,
-      });
-
       await db
         .update(scheduledPosts)
         .set({
@@ -320,7 +427,7 @@ async function publishScheduledPost(context: PublishingContext): Promise<void> {
         platform: context.platform,
       });
     } else {
-      // FAILURE: Classify error and decide on retry
+      // FAILURE: Classify error and mark as failed
       const errorClassification = classifyError(
         result.errorMessage || "Unknown error",
         result.errorCode
@@ -328,12 +435,13 @@ async function publishScheduledPost(context: PublishingContext): Promise<void> {
 
       await handlePublishingFailure(
         context,
-        jobId,
         errorClassification
       );
     }
   } catch (error: any) {
     // Unhandled error during publishing
+    console.error(`[PublishingWorker] ❌ Unhandled error:`, error);
+
     const errorClassification = classifyError(
       error?.message ?? "Unknown error",
       undefined
@@ -341,10 +449,12 @@ async function publishScheduledPost(context: PublishingContext): Promise<void> {
 
     await handlePublishingFailure(
       context,
-      jobId,
       errorClassification
     );
   }
+
+  const publishDurationMs = Date.now() - publishStartTime;
+  console.log(`[PublishingWorker] Publishing completed in ${publishDurationMs}ms`);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -369,26 +479,10 @@ function classifyError(errorMessage: string, errorCode?: string): ErrorClassific
       message: "Access token expired or invalid",
       isRetryable: false,
       isAuthError: true,
-      httpStatus: 401,
     };
   }
 
-  if (
-    errorCode === "INSUFFICIENT_PERMISSIONS" ||
-    lowerMessage.includes("permission") ||
-    lowerMessage.includes("403") ||
-    lowerMessage.includes("insufficient")
-  ) {
-    return {
-      code: "INSUFFICIENT_PERMISSIONS",
-      message: "Insufficient permissions to publish",
-      isRetryable: false,
-      isAuthError: true,
-      httpStatus: 403,
-    };
-  }
-
-  // Retryable errors: rate limit, timeout, network
+  // Rate limit errors: retryable
   if (
     errorCode === "RATE_LIMITED" ||
     lowerMessage.includes("rate limit") ||
@@ -398,317 +492,98 @@ function classifyError(errorMessage: string, errorCode?: string): ErrorClassific
       code: "RATE_LIMITED",
       message: "Rate limited by platform",
       isRetryable: true,
-      isAuthError: false,
-      httpStatus: 429,
     };
   }
 
+  // Network errors: retryable
   if (
-    errorCode === "TIMEOUT" ||
     lowerMessage.includes("timeout") ||
-    lowerMessage.includes("econnrefused")
-  ) {
-    return {
-      code: "TIMEOUT",
-      message: "Request timeout",
-      isRetryable: true,
-      isAuthError: false,
-    };
-  }
-
-  if (
-    errorCode === "NETWORK_ERROR" ||
-    lowerMessage.includes("network") ||
-    lowerMessage.includes("enotfound")
+    lowerMessage.includes("econnrefused") ||
+    lowerMessage.includes("network")
   ) {
     return {
       code: "NETWORK_ERROR",
       message: "Network error",
       isRetryable: true,
-      isAuthError: false,
     };
   }
 
-  // Permanent errors: not found, invalid request
+  // Permission errors: not retryable
   if (
-    errorCode === "NOT_FOUND" ||
-    lowerMessage.includes("not found") ||
-    lowerMessage.includes("404")
+    lowerMessage.includes("permission") ||
+    lowerMessage.includes("forbidden") ||
+    lowerMessage.includes("403")
   ) {
     return {
-      code: "NOT_FOUND",
-      message: "Resource not found",
+      code: "PERMISSION_DENIED",
+      message: "Insufficient permissions",
       isRetryable: false,
-      isAuthError: false,
-      httpStatus: 404,
     };
   }
 
-  if (
-    errorCode === "INVALID_REQUEST" ||
-    lowerMessage.includes("invalid") ||
-    lowerMessage.includes("400")
-  ) {
-    return {
-      code: "INVALID_REQUEST",
-      message: "Invalid request",
-      isRetryable: false,
-      isAuthError: false,
-      httpStatus: 400,
-    };
-  }
-
-  // Default: unknown error (treat as retryable)
+  // Default: not retryable
   return {
     code: "UNKNOWN_ERROR",
     message: errorMessage,
-    isRetryable: true,
-    isAuthError: false,
+    isRetryable: false,
   };
 }
 
 /**
- * Handle publishing failure: decide on retry, reconnect_required, or permanent failure
+ * Handle publishing failure: log error and decide on retry
  */
 async function handlePublishingFailure(
   context: PublishingContext,
-  jobId: number,
   errorClassification: ErrorClassification
 ): Promise<void> {
   const db = await getDb();
   if (!db) return;
-  const posts = await db.select().from(scheduledPosts).where(eq(scheduledPosts.id, context.scheduledPostId)).limit(1);
-  const currentPost = posts[0];
 
-  const currentRetryCount = currentPost?.retryCount || 0;
-  const maxRetries = 5;
-
-  console.log(`[PublishingWorker] ❌ Publishing failed for post ${context.postId}`, {
-    scheduledPostId: context.scheduledPostId,
+  console.error(`[PublishingWorker] ❌ Publishing failed for post ${context.postId}:`, {
     errorCode: errorClassification.code,
     errorMessage: errorClassification.message,
     isRetryable: errorClassification.isRetryable,
     isAuthError: errorClassification.isAuthError,
-    retryCount: currentRetryCount,
   });
 
-  // Case 1: Auth error → Mark as reconnect_required
-  if (errorClassification.isAuthError) {
-    await updatePublishingJob(jobId, {
-      status: "failed_auth",
-      completedAt: new Date(),
-      errorCode: errorClassification.code,
-      errorMessage: errorClassification.message,
-    });
+  if (errorClassification.isRetryable) {
+    // Retryable error: schedule for retry
+    const retryCount = (await db.select().from(scheduledPosts).where(eq(scheduledPosts.id, context.scheduledPostId)).limit(1))[0]?.retryCount || 0;
+    const nextRetryDelaySeconds = Math.min(300, 60 * Math.pow(2, retryCount)); // Exponential backoff: 60s, 120s, 240s, max 300s
+    const nextRetryAt = new Date(Date.now() + nextRetryDelaySeconds * 1000);
 
     await db
       .update(scheduledPosts)
       .set({
-        status: "reconnect_required",
-        lastError: errorClassification.message,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(scheduledPosts.id, context.scheduledPostId));
-
-    console.log(
-      `[PublishingWorker] Post ${context.postId} marked as reconnect_required`
-    );
-    return;
-  }
-
-  // Case 2: Retryable error and retries remaining → Schedule retry
-  if (errorClassification.isRetryable && currentRetryCount < maxRetries) {
-    const nextRetryAt = calculateNextRetryTime(currentRetryCount);
-
-    await updatePublishingJob(jobId, {
-      status: "failed_retrying",
-      completedAt: new Date(),
-      errorCode: errorClassification.code,
-      errorMessage: errorClassification.message,
-      attemptNumber: currentRetryCount + 1,
-    });
-
-    await db
-      .update(scheduledPosts)
-      .set({
-        status: "scheduled", // Reset to scheduled so worker picks it up again
-        retryCount: currentRetryCount + 1,
+        status: "scheduled",
+        retryCount: retryCount + 1,
         nextRetryAt: nextRetryAt.toISOString(),
         lastError: errorClassification.message,
         updatedAt: new Date().toISOString(),
       })
       .where(eq(scheduledPosts.id, context.scheduledPostId));
 
-    console.log(
-      `[PublishingWorker] Post ${context.postId} scheduled for retry #${currentRetryCount + 1} at ${nextRetryAt.toISOString()}`
-    );
-    return;
-  }
-
-  // Case 3: Max retries exceeded or permanent error → Mark as failed
-  const failureReason =
-    currentRetryCount >= maxRetries
-      ? `Max retries (${maxRetries}) exceeded: ${errorClassification.message}`
-      : errorClassification.message;
-
-  await updatePublishingJob(jobId, {
-    status: "failed_permanent",
-    completedAt: new Date(),
-    errorCode: errorClassification.code,
-    errorMessage: failureReason,
-  });
-
-  await db
-    .update(scheduledPosts)
-    .set({
-      status: "failed",
-      lastError: failureReason,
-      updatedAt: new Date().toISOString(),
-    })
-    .where(eq(scheduledPosts.id, context.scheduledPostId));
-
-  console.log(`[PublishingWorker] Post ${context.postId} marked as permanently failed`);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// EXPONENTIAL BACKOFF RETRY CALCULATION
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Calculate next retry time using exponential backoff
- * 
- * Retry schedule:
- * - Attempt 1: 5 minutes
- * - Attempt 2: 15 minutes
- * - Attempt 3: 1 hour
- * - Attempt 4: 4 hours
- * - Attempt 5: 24 hours
- */
-function calculateNextRetryTime(attemptNumber: number): Date {
-  const delays = [
-    5 * 60_000,           // 5 minutes (attempt 0)
-    15 * 60_000,          // 15 minutes (attempt 1)
-    60 * 60_000,          // 1 hour (attempt 2)
-    4 * 60 * 60_000,      // 4 hours (attempt 3)
-    24 * 60 * 60_000,     // 24 hours (attempt 4)
-  ];
-
-  const delay = delays[attemptNumber] || delays[delays.length - 1];
-  return new Date(Date.now() + delay);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// DATABASE HELPERS
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Get content post by ID
- */
-async function getContentPostById(postId: number): Promise<any> {
-  const db = await getDb();
-  if (!db) return null;
-  const posts = await db.select().from(contentPosts).where(eq(contentPosts.id, postId)).limit(1);
-  return posts[0];
-}
-
-/**
- * Get platform connection with credentials
- */
-async function getPlatformConnectionWithCredentials(
-  userId: number,
-  connectionId: number
-): Promise<any> {
-  const db = await getDb();
-  if (!db) return null;
-  const connections = await db.select().from(platformConnections).where(and(
-    eq(platformConnections.id, connectionId),
-    eq(platformConnections.userId, userId)
-  )).limit(1);
-  return connections[0];
-}
-
-/**
- * Create publishing job record
- */
-async function createPublishingJob(context: PublishingContext): Promise<number> {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  const result = await db.insert(publishingJobs).values({
-    scheduledPostId: context.scheduledPostId,
-    userId: context.userId,
-    postId: context.postId,
-    platform: context.platform,
-    pageId: context.pageId,
-    status: "running",
-    startedAt: new Date().toISOString(),
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  }).$returningId();
-
-  return (result as any)[0]?.id || 0;
-}
-
-/**
- * Update publishing job
- */
-async function updatePublishingJob(
-  jobId: number,
-  updates: Partial<{
-    status: "success" | "failed_auth" | "failed_retrying" | "failed_permanent" | "running";
-    completedAt: Date;
-    remotePostId: string;
-    errorCode: string;
-    errorMessage: string;
-    attemptNumber: number;
-  }>
-): Promise<void> {
-  const db = await getDb();
-  if (!db) return;
-  const dbUpdates: any = { ...updates, updatedAt: new Date().toISOString() };
-  if (updates.completedAt) {
-    dbUpdates.completedAt = updates.completedAt.toISOString();
-  }
-  await db
-    .update(publishingJobs)
-    .set(dbUpdates)
-    .where(eq(publishingJobs.id, jobId));
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// WORKER LIFECYCLE
-// ─────────────────────────────────────────────────────────────────────────────
-
-let workerInterval: NodeJS.Timeout | null = null;
-
-/**
- * Start the publishing worker
- * Runs immediately, then every 60 seconds
- */
-export function startPublishingWorker(): void {
-  console.log("[PublishingWorker] Starting publishing worker");
-
-  // Run immediately
-  executePublishingJobs().catch((error) => {
-    console.error("[PublishingWorker] Error in initial execution:", error);
-  });
-
-  // Then every 60 seconds
-  workerInterval = setInterval(() => {
-    executePublishingJobs().catch((error) => {
-      console.error("[PublishingWorker] Error in scheduled execution:", error);
+    console.log(`[PublishingWorker] 🔄 Scheduled retry for post ${context.postId}`, {
+      retryCount: retryCount + 1,
+      nextRetryAt: nextRetryAt.toISOString(),
+      delaySeconds: nextRetryDelaySeconds,
     });
-  }, 60_000);
+  } else {
+    // Non-retryable error: mark as failed
+    const status = errorClassification.isAuthError ? "reconnect_required" : "failed";
 
-  console.log("[PublishingWorker] Worker started (runs every 60 seconds)");
-}
+    await db
+      .update(scheduledPosts)
+      .set({
+        status: status as any,
+        lastError: errorClassification.message,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(scheduledPosts.id, context.scheduledPostId));
 
-/**
- * Stop the publishing worker (for graceful shutdown)
- */
-export function stopPublishingWorker(): void {
-  if (workerInterval) {
-    clearInterval(workerInterval);
-    workerInterval = null;
-    console.log("[PublishingWorker] Worker stopped");
+    console.log(`[PublishingWorker] ❌ Marked post ${context.postId} as ${status}:`, {
+      errorCode: errorClassification.code,
+      errorMessage: errorClassification.message,
+    });
   }
 }

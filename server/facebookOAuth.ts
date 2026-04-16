@@ -273,3 +273,36 @@ export async function refreshPageToken(
     return null;
   }
 }
+
+/**
+ * Get detailed token info for debugging (scopes, type, page, expiry)
+ */
+export async function getTokenInfo(accessToken: string): Promise<any> {
+  const url = new URL(`${FACEBOOK_GRAPH_URL}/debug_token`);
+  url.searchParams.append("input_token", accessToken);
+  url.searchParams.append("access_token", accessToken);
+
+  try {
+    const response = await fetch(url.toString());
+    const data = await response.json();
+
+    if (!response.ok || data.error) {
+      console.error(`[Facebook] Token info error:`, data.error);
+      return null;
+    }
+
+    const tokenData = data.data;
+    return {
+      type: tokenData.type,  // 'PAGE' or 'USER'
+      appId: tokenData.app_id,
+      userId: tokenData.user_id,
+      isValid: tokenData.is_valid,
+      expiresAt: tokenData.expires_at ? new Date(tokenData.expires_at * 1000).toISOString() : null,
+      scopes: tokenData.scopes || [],
+      error: tokenData.error,
+    };
+  } catch (error) {
+    console.error("[Facebook] Error getting token info:", error);
+    return null;
+  }
+}

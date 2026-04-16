@@ -240,3 +240,44 @@
 - [ ] Verify token storage
 - [ ] Verify page list fetching
 - [ ] Run Test 1: Schedule and publish with real connection
+
+
+## Facebook Publishing Reliability Hardening (IN PROGRESS)
+
+### Phase 1: Retry Logic & Timeout Protection
+- [ ] Implement max 2 retries for failed publishes
+- [ ] Add exponential backoff (60s, 120s, 240s)
+- [ ] Add 30-second timeout per publish attempt
+- [ ] Auto-mark jobs stuck in "publishing" for >2 minutes as "failed"
+- [ ] Log every publish attempt with timestamp and result
+- [ ] Test retry logic with network failures
+
+### Phase 2: Status & Recovery
+- [ ] Verify all jobs end in: scheduled, publishing, published, or failed
+- [ ] Ensure lastError is always populated on failure
+- [ ] Add manual retry button for failed jobs (in UI)
+- [ ] Add cancel/delete button for scheduled jobs (in UI)
+- [ ] Test status transitions with multiple scenarios
+
+### Phase 3: Facebook Production Cleanup
+- [ ] Identify and remove legacy broken posts from failed publish logic
+- [ ] Verify remotePostId is saved for all successful publishes
+- [ ] Check for duplicate publishes across multiple scheduled jobs
+- [ ] Audit database for orphaned or stuck jobs
+- [ ] Clean up test posts from development
+
+### Phase 4: UI/UX Improvements
+- [ ] Add clear status badges (Scheduled, Publishing, Published, Failed)
+- [ ] Show connection/page name in post list
+- [ ] Show published timestamp for successful posts
+- [ ] Show failed reason inline with error details
+- [ ] Add retry/cancel buttons with confirmation dialogs
+- [ ] Improve visual hierarchy and readability
+
+### Phase 5: Testing & Documentation
+- [ ] Run reliability test with 5+ posts at staggered times
+- [ ] Verify no duplicates across all posts
+- [ ] Verify no stuck jobs in "publishing" state
+- [ ] Verify correct status transitions (scheduled → publishing → published)
+- [ ] Document Facebook publishing flow and safeguards
+- [ ] Create runbook for troubleshooting failed posts
