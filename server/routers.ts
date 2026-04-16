@@ -15,11 +15,15 @@ import {
   getConnectionWithCredentials,
   getPlatformConnectionById,
   markInviteCodeAsUsed,
+  getDb,
 } from "./db";
+import { eq } from "drizzle-orm";
+import { users } from "../drizzle/schema";
 import { publishToFacebook, publishToInstagram, publishToTikTok } from "./platformPublisher";
 import { generateAIImage, uploadMediaFile, validateUploadedFile } from "./imageHandler";
 import { scheduleRouter } from "./scheduleRouter";
 import { connectionsRouter } from "./connectionsRouter";
+
 
 // ─── Hashtag utilities ────────────────────────────────────────────────────────
 /**
@@ -463,6 +467,39 @@ IMPORTANT:
       ctx.res?.clearCookie("session");
       return { success: true };
     }),
+  }),
+
+  // ─── Settings ───────────────────────────────────────────────────────────────
+  settings: router({
+    toggleAutoPublish: protectedProcedure
+      .input(z.object({ enabled: z.boolean() }))
+      .mutation(async ({ ctx, input }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database unavailable' });
+        
+        await db
+          .update(users)
+          .set({ autoPublishAfterGenerate: input.enabled ? 1 : 0 })
+          .where(eq(users.id, ctx.user.id));
+        
+        return { success: true, enabled: input.enabled };
+      }),
+
+    getSettings: protectedProcedure
+      .query(async ({ ctx }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database unavailable' });
+        
+        const result = await db
+          .select({ autoPublishAfterGenerate: users.autoPublishAfterGenerate })
+          .from(users)
+          .where(eq(users.id, ctx.user.id))
+          .limit(1);
+        
+        return {
+          autoPublishAfterGenerate: result[0]?.autoPublishAfterGenerate === 1 || false,
+        };
+      }),
   }),
 
   // ─── Approval Workflow ───────────────────────────────────────────────────────
