@@ -105,21 +105,10 @@ export async function publishToInstagram(
 
     const publishData = await publishRes.json() as any;
     if (!publishRes.ok || publishData.error) {
-      const errorResult: PublishResult = {
+      return {
         success: false,
         errorMessage: publishData.error?.message ?? `Instagram publish error (${publishRes.status})`,
       };
-
-      // Attach error code for worker to classify
-      if (publishRes.status === 401 || publishData.error?.code === 190) {
-        errorResult.errorMessage = "TOKEN_EXPIRED: " + errorResult.errorMessage;
-      } else if (publishRes.status === 403 || publishData.error?.code === 200) {
-        errorResult.errorMessage = "INSUFFICIENT_PERMISSIONS: " + errorResult.errorMessage;
-      } else if (publishRes.status === 429) {
-        errorResult.errorMessage = "RATE_LIMITED: " + errorResult.errorMessage;
-      }
-
-      return errorResult;
     }
 
     return { success: true, platformPostId: publishData.id };
@@ -135,15 +124,16 @@ export async function publishToInstagram(
  *           page_id     (Facebook Page ID)
  * 
  * Supports:
- * - Text-only posts
- * - Text + single image (via direct binary upload to /{page-id}/photos)
- * - Proper error classification for auth failures and rate limits
+ * - Text-only posts (to /{page-id}/feed)
+ * - Photo posts with caption (to /{page-id}/photos with message parameter)
  * 
- * Image Upload Flow:
+ * Photo Post Flow (NATIVE POST - NO SHARE WRAPPER):
  * 1. If imageUrl provided, fetch image binary from URL
- * 2. Upload to Facebook using POST /{page-id}/photos with multipart form data
- * 3. Get photo ID from response
- * 4. Create feed post with object_attachment pointing to photo ID
+ * 2. POST directly to /{page-id}/photos with:
+ *    - source: image binary
+ *    - message: caption text
+ * 3. This creates a native photo post with insights
+ * 4. If image fails, fall back to text-only post
  */
 export async function publishToFacebook(
   post: PostContent,
@@ -153,33 +143,24 @@ export async function publishToFacebook(
     const text = buildPostText(post);
     const { accessToken, pageId } = credentials;
 
-    let photoId: string | undefined;
-
-    // Step 1: Upload image if available (direct binary upload)
+    // If we have an image, post directly to /photos endpoint
+    // This creates a native photo post (not a share wrapper)
     if (post.imageUrl) {
       try {
-        photoId = await uploadImageToFacebook(post.imageUrl, pageId, accessToken);
-        console.log(`[Facebook] Image uploaded successfully. Photo ID: ${photoId}`);
-      } catch (imgErr: any) {
-        console.warn(`[Facebook] Image upload failed: ${imgErr.message}. Continuing with text-only post.`);
-        // Don't fail the entire post if image upload fails - continue with text-only
+        console.log(`[Facebook] Publishing photo post with caption to /${pageId}/photos`);
+        return await publishPhotoPost(text, post.imageUrl, pageId, accessToken);
+      } catch (photoErr: any) {
+        console.warn(`[Facebook] Photo post failed: ${photoErr.message}. Falling back to text-only post.`);
+        // Fall through to text-only post below
       }
     }
 
-    // Step 2: Create feed post with message only
-    // NOTE: Do NOT use object_attachment as it creates a share/wrapper post
-    // Instead, the uploaded photo will automatically appear as the post's image
-    // when we reference it via attached_media parameter
+    // Fallback: Create text-only feed post (if no image or image upload failed)
+    console.log(`[Facebook] Publishing text-only post to /${pageId}/feed`);
     const body: any = {
       message: text,
       access_token: accessToken,
     };
-
-    // If photo was uploaded, reference it as attached media
-    // This creates a native post with the image, not a share wrapper
-    if (photoId) {
-      body.attached_media = [{ media_fbid: photoId }];
-    }
 
     const res = await fetch(
       `https://graph.facebook.com/v21.0/${pageId}/feed`,
@@ -209,6 +190,7 @@ export async function publishToFacebook(
       return errorResult;
     }
 
+    console.log(`[Facebook] Text-only post created: ${data.id}`);
     return { success: true, platformPostId: data.id };
   } catch (err: any) {
     return { success: false, errorMessage: err?.message ?? "Unknown Facebook error" };
@@ -216,53 +198,68 @@ export async function publishToFacebook(
 }
 
 /**
- * Upload image binary to Facebook and return photo ID
- * Uses multipart form data to POST to /{page-id}/photos
+ * Publish a photo post directly to Facebook's /photos endpoint
+ * This creates a NATIVE photo post (not a share wrapper)
+ * 
+ * The caption is passed as the "message" parameter, which becomes the post text
+ * The image is uploaded as the "source" parameter
+ * Result: One native post with image + caption + proper insights
  */
-async function uploadImageToFacebook(
+async function publishPhotoPost(
+  caption: string,
   imageUrl: string,
   pageId: string,
   accessToken: string
-): Promise<string> {
-  // Step 1: Fetch image binary from URL
-  console.log(`[Facebook] Fetching image from: ${imageUrl}`);
-  const imageRes = await fetch(imageUrl);
-  if (!imageRes.ok) {
-    throw new Error(`Failed to fetch image: ${imageRes.status} ${imageRes.statusText}`);
-  }
-
-  const imageBuffer = await imageRes.arrayBuffer();
-  console.log(`[Facebook] Image fetched: ${imageBuffer.byteLength} bytes`);
-
-  // Step 2: Create FormData for multipart upload
-  const formData = new FormData();
-  const blob = new Blob([imageBuffer], { type: imageRes.headers.get('content-type') || 'image/jpeg' });
-  formData.append('source', blob, 'image.jpg');
-  formData.append('access_token', accessToken);
-
-  // Step 3: Upload to Facebook
-  console.log(`[Facebook] Uploading image to /${pageId}/photos`);
-  const uploadRes = await fetch(
-    `https://graph.facebook.com/v21.0/${pageId}/photos`,
-    {
-      method: "POST",
-      body: formData,
-      // Don't set Content-Type header - fetch will set it with boundary automatically
+): Promise<PublishResult> {
+  try {
+    // Step 1: Fetch image binary from URL
+    console.log(`[Facebook] Fetching image from: ${imageUrl}`);
+    const imageRes = await fetch(imageUrl);
+    if (!imageRes.ok) {
+      throw new Error(`Failed to fetch image: ${imageRes.status} ${imageRes.statusText}`);
     }
-  );
 
-  const uploadData = await uploadRes.json() as any;
-  if (!uploadRes.ok || uploadData.error) {
-    throw new Error(
-      uploadData.error?.message ?? `Facebook photo upload error (${uploadRes.status})`
+    const imageBuffer = await imageRes.arrayBuffer();
+    console.log(`[Facebook] Image fetched: ${imageBuffer.byteLength} bytes`);
+
+    // Step 2: Create FormData for multipart upload to /photos endpoint
+    const formData = new FormData();
+    const blob = new Blob([imageBuffer], { type: imageRes.headers.get('content-type') || 'image/jpeg' });
+    formData.append('source', blob, 'image.jpg');
+    formData.append('message', caption);  // Caption becomes the post message
+    formData.append('access_token', accessToken);
+
+    // Step 3: POST directly to /photos endpoint
+    // This creates a native photo post with the caption as the post text
+    console.log(`[Facebook] Publishing photo post to /${pageId}/photos with caption`);
+    const photoRes = await fetch(
+      `https://graph.facebook.com/v21.0/${pageId}/photos`,
+      {
+        method: "POST",
+        body: formData,
+        // Don't set Content-Type header - fetch will set it with boundary automatically
+      }
     );
-  }
 
-  if (!uploadData.id) {
-    throw new Error('No photo ID returned from Facebook');
-  }
+    const photoData = await photoRes.json() as any;
+    console.log(`[Facebook] Photo endpoint response:`, photoData);
 
-  return uploadData.id;
+    if (!photoRes.ok || photoData.error) {
+      const errorMsg = photoData.error?.message ?? `Facebook photo error (${photoRes.status})`;
+      console.error(`[Facebook] Photo post error: ${errorMsg}`);
+      throw new Error(errorMsg);
+    }
+
+    if (!photoData.id) {
+      throw new Error('No post ID returned from Facebook photo endpoint');
+    }
+
+    console.log(`[Facebook] Native photo post created: ${photoData.id}`);
+    return { success: true, platformPostId: photoData.id };
+  } catch (err: any) {
+    console.error(`[Facebook] Photo post failed:`, err);
+    throw err;
+  }
 }
 
 /**
