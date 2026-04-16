@@ -287,8 +287,16 @@ export const appRouter = router({
         }
 
         // Get connection with credentials
-        const connection = await getConnectionWithCredentials(input.connectionId, ctx.user.id);
+        const connection = await getConnectionWithCredentials(input.connectionId);
         if (!connection) throw new TRPCError({ code: "NOT_FOUND", message: "Connection not found" });
+        
+        // Validate that connection has required credentials
+        if (!connection.accessToken) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Connection is missing access token. Please reconnect your account." });
+        }
+        if (!connection.accountId) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Connection is missing account ID. Please reconnect your account." });
+        }
 
         console.log(`[content.publish] Publishing to platform: ${connection.platform}`);
         console.log(`[content.publish] Page/Account ID: ${connection.accountId}`);
@@ -296,12 +304,15 @@ export const appRouter = router({
         try {
           // Publish based on platform
           let result;
+          // After validation above, we know accessToken and accountId are not null
+          const validatedConnection = connection as typeof connection & { accessToken: string; accountId: string };
+          
           if (connection.platform === 'facebook') {
-            result = await publishToFacebook(post, connection);
+            result = await publishToFacebook(post, validatedConnection);
           } else if (connection.platform === 'instagram') {
-            result = await publishToInstagram(post, connection);
+            result = await publishToInstagram(post, validatedConnection);
           } else if (connection.platform === 'tiktok') {
-            result = await publishToTikTok(post, connection);
+            result = await publishToTikTok(post, validatedConnection);
           } else {
             throw new TRPCError({ code: "BAD_REQUEST", message: `Unsupported platform: ${connection.platform}` });
           }
