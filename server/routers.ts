@@ -153,7 +153,7 @@ export const appRouter = router({
           niche: input.niche,
           platform: input.platform,
           contentType: input.contentType,
-          status: "approved" as const,
+          status: "draft" as const,
           caption: input.caption,
           hashtags: Array.isArray(input.hashtags) ? input.hashtags : (typeof input.hashtags === 'string' ? input.hashtags.split(' ') : []),
           imagePrompt: input.imagePrompt,
@@ -191,18 +191,13 @@ export const appRouter = router({
     list: protectedProcedure
       .input(
         z.object({
-          status: z.enum(["pending", "approved", "rejected", "draft", "pending_review", "published", "failed"]).optional(),
+          status: z.enum(["pending", "approved", "rejected"]).optional(),
           limit: z.number().default(50),
           offset: z.number().default(0),
         })
       )
       .query(async ({ ctx, input }) => {
-        const allPosts = await getContentPostsByAuthor(ctx.user.id);
-        // If no status filter, return posts that can be scheduled (approved or draft)
-        if (!input.status) {
-          return allPosts.filter(p => p.status === 'approved' || p.status === 'draft');
-        }
-        return allPosts.filter(p => p.status === input.status);
+        return getContentPostsByAuthor(ctx.user.id);
       }),
 
     get: protectedProcedure
