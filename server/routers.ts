@@ -197,7 +197,9 @@ export const appRouter = router({
         })
       )
       .query(async ({ ctx, input }) => {
-        return getContentPostsByAuthor(ctx.user.id);
+        const allPosts = await getContentPostsByAuthor(ctx.user.id);
+        if (!input.status) return allPosts;
+        return allPosts.filter(p => p.status === input.status);
       }),
 
     get: protectedProcedure
