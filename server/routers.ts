@@ -153,7 +153,7 @@ export const appRouter = router({
           niche: input.niche,
           platform: input.platform,
           contentType: input.contentType,
-          status: "draft" as const,
+          status: "approved" as const,
           caption: input.caption,
           hashtags: Array.isArray(input.hashtags) ? input.hashtags : (typeof input.hashtags === 'string' ? input.hashtags.split(' ') : []),
           imagePrompt: input.imagePrompt,
@@ -197,7 +197,12 @@ export const appRouter = router({
         })
       )
       .query(async ({ ctx, input }) => {
-        return getContentPostsByAuthor(ctx.user.id);
+        // Get posts filtered by status (if provided)
+        const allPosts = await getAllContentPosts({
+          status: input.status,
+        });
+        // Filter by current user
+        return allPosts.filter(post => post.authorId === ctx.user.id);
       }),
 
     get: protectedProcedure

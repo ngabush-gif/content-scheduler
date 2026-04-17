@@ -69,10 +69,16 @@ export const scheduleRouter = router({
       }
 
       // Step 2: Verify post is approved
+      console.log('[scheduleRouter.create] Post status check:', {
+        postId: post.id,
+        postTitle: post.title,
+        postStatus: post.status,
+        isApproved: post.status === 'approved',
+      });
       if (post.status !== "approved") {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Only approved posts can be scheduled",
+          message: `Post status is '${post.status}', not 'approved'. Only approved posts can be scheduled`,
         });
       }
 

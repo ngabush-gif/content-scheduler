@@ -220,6 +220,8 @@ export async function getAllContentPosts(filters?: {
   if (filters?.platform) conditions.push(eq(contentPosts.platform, filters.platform as any));
   if (filters?.isLibraryItem !== undefined) conditions.push(eq(contentPosts.isLibraryItem, filters.isLibraryItem ? 1 : 0));
 
+  console.log('[getAllContentPosts] Filters:', filters, 'Conditions:', conditions.length);
+
   const query = db.select().from(contentPosts);
   let result;
   if (conditions.length > 0) {
@@ -227,7 +229,9 @@ export async function getAllContentPosts(filters?: {
   } else {
     result = await query.orderBy(desc(contentPosts.createdAt));
   }
-  return result.map(deserializeContentPost);
+  const mapped = result.map(deserializeContentPost);
+  console.log('[getAllContentPosts] Returned', mapped.length, 'posts');
+  return mapped;
 }
 
 export async function updateContentPost(id: number, data: Partial<InsertContentPost>) {
