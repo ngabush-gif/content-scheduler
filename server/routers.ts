@@ -191,14 +191,17 @@ export const appRouter = router({
     list: protectedProcedure
       .input(
         z.object({
-          status: z.enum(["pending", "approved", "rejected"]).optional(),
+          status: z.enum(["pending", "approved", "rejected", "draft", "pending_review", "published", "failed"]).optional(),
           limit: z.number().default(50),
           offset: z.number().default(0),
         })
       )
       .query(async ({ ctx, input }) => {
         const allPosts = await getContentPostsByAuthor(ctx.user.id);
-        if (!input.status) return allPosts;
+        // If no status filter, return posts that can be scheduled (approved or draft)
+        if (!input.status) {
+          return allPosts.filter(p => p.status === 'approved' || p.status === 'draft');
+        }
         return allPosts.filter(p => p.status === input.status);
       }),
 

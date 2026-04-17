@@ -50,7 +50,8 @@ function CalendarContent() {
 
   // Get scheduled posts
   const { data: scheduledPosts = [] } = trpc.schedule.list.useQuery();
-  const { data: approvedPosts = [] } = trpc.content.list.useQuery({ status: 'approved' });
+  // Get both approved (generated) and draft (library) posts for scheduling
+  const { data: approvedPosts = [] } = trpc.content.list.useQuery();
 
   // Mutations
   const scheduleMutation = trpc.schedule.create.useMutation({
