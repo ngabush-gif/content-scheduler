@@ -16,8 +16,8 @@ import {
   getPlatformConnectionById,
   markInviteCodeAsUsed,
 } from "./db";
-import { publishToFacebook, publishToInstagram, publishToTikTok } from "./platformPublisher";
 import { generateAIImage, uploadMediaFile, validateUploadedFile } from "./imageHandler";
+import { publishToFacebook, publishToInstagram, publishToTikTok } from "./platformPublisher";
 import { scheduleRouter } from "./scheduleRouter";
 import { connectionsRouter } from "./connectionsRouter";
 
@@ -442,19 +442,36 @@ IMPORTANT:
   // ─── Media ────────────────────────────────────────────────────────────────
   media: router({
     generateImage: protectedProcedure
-      .input(z.object({ prompt: z.string() }))
+      .input(z.object({ 
+        caption: z.string(),
+        niche: z.enum(["time_freedom", "parents", "side_hustlers", "online_business", "cultural", "over_50", "scam_survivors"]),
+        tone: z.string().optional(),
+      }))
       .mutation(async ({ input }) => {
-        const { generateImage } = await import("./_core/imageGeneration");
-        const result = await generateImage({ prompt: input.prompt });
-        return result;
+        const result = await generateAIImage(input.caption, input.niche, input.tone);
+        if (!result.success) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error || "Failed to generate image" });
+        }
+        return { url: result.url };
       }),
 
-    uploadFile: protectedProcedure
-      .input(z.object({ fileName: z.string(), fileData: z.string() }))
+    uploadImage: protectedProcedure
+      .input(z.object({ 
+        fileName: z.string(),
+        fileData: z.string(),
+        mimeType: z.string(),
+      }))
       .mutation(async ({ ctx, input }) => {
         const buffer = Buffer.from(input.fileData, "base64");
-        const result = await uploadMediaFile(buffer, input.fileName, "application/octet-stream", ctx.user.id);
-        return result;
+        const validation = validateUploadedFile(buffer, input.mimeType);
+        if (!validation.valid) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: validation.error || "Invalid file" });
+        }
+        const result = await uploadMediaFile(buffer, input.fileName, input.mimeType, ctx.user.id);
+        if (!result.success) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error || "Failed to upload image" });
+        }
+        return { url: result.url };
       }),
   }),
 
