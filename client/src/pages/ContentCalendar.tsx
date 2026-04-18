@@ -210,13 +210,10 @@ function CalendarContent() {
                           <img src={post.imageUrl} alt="" className="w-12 h-12 rounded object-cover flex-shrink-0" />
                         )}
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium truncate">{post.title}</p>
+                          <p className="font-medium truncate">{post.title} | {new Date(post.scheduledAt).toLocaleDateString('en-AU')} {new Date(post.scheduledAt).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}</p>
                           <p className="text-xs text-gray-500 mt-1">
                             <span className="font-medium">{post.platform}</span>
                             {post.connectionName && <span> • {post.connectionName}</span>}
-                          </p>
-                          <p className="text-xs text-gray-400 mt-0.5">
-                            Scheduled: {new Date(post.scheduledAt).toLocaleString()}
                           </p>
                           {post.publishedAt && (
                             <p className="text-xs text-green-600 mt-0.5">

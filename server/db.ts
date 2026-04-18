@@ -277,7 +277,9 @@ export async function getScheduledPosts(userIdOrFilters?: number | { status?: st
   if (!db) return [];
   const conditions = [];
   if (typeof userIdOrFilters === 'number') {
-    conditions.push(eq(scheduledPosts.scheduledById, userIdOrFilters));
+    // Filter by post author (the user who created the post), not who scheduled it
+    // Join with contentPosts to get the author and filter by their ID
+    conditions.push(eq(contentPosts.authorId, userIdOrFilters));
   } else if (userIdOrFilters) {
     const filters = userIdOrFilters;
     if (filters.status) conditions.push(eq(scheduledPosts.status, filters.status as any));
@@ -285,11 +287,19 @@ export async function getScheduledPosts(userIdOrFilters?: number | { status?: st
     if (filters.to) conditions.push(lte(scheduledPosts.scheduledAt, filters.to.toISOString()));
   }
 
-  const query = db.select().from(scheduledPosts);
+  const query = db
+    .select()
+    .from(scheduledPosts)
+    .innerJoin(contentPosts, eq(scheduledPosts.postId, contentPosts.id));
+  
   if (conditions.length > 0) {
-    return query.where(and(...conditions)).orderBy(scheduledPosts.scheduledAt);
+    return query.where(and(...conditions)).orderBy(scheduledPosts.scheduledAt).then((results) =>
+      results.map((r: any) => r.scheduled_posts)
+    );
   }
-  return query.orderBy(scheduledPosts.scheduledAt);
+  return query.orderBy(scheduledPosts.scheduledAt).then((results) =>
+    results.map((r: any) => r.scheduled_posts)
+  );
 }
 
 export async function updateScheduledPost(id: number, data: Partial<InsertScheduledPost>) {
