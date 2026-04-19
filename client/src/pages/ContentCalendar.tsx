@@ -51,6 +51,15 @@ function CalendarContent() {
   // Get scheduled posts
   const { data: scheduledPosts = [] } = trpc.schedule.list.useQuery();
   const { data: approvedPosts = [] } = trpc.content.list.useQuery({ status: 'approved' });
+  
+  React.useEffect(() => {
+    console.log('[ContentCalendar] Scheduled Posts:', scheduledPosts);
+    if (scheduledPosts.length > 0) {
+      console.log('[ContentCalendar] First post:', scheduledPosts[0]);
+      console.log('[ContentCalendar] First post title:', scheduledPosts[0].title);
+      console.log('[ContentCalendar] First post scheduledAt:', scheduledPosts[0].scheduledAt);
+    }
+  }, [scheduledPosts]);
 
   // Mutations
   const scheduleMutation = trpc.schedule.create.useMutation({
@@ -210,11 +219,12 @@ function CalendarContent() {
                           <img src={post.imageUrl} alt="" className="w-12 h-12 rounded object-cover flex-shrink-0" />
                         )}
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium truncate">{post.title} | {new Date(post.scheduledAt).toLocaleDateString('en-AU')} {new Date(post.scheduledAt).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}</p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            <span className="font-medium">{post.platform}</span>
-                            {post.connectionName && <span> • {post.connectionName}</span>}
-                          </p>
+                          <p className="font-medium truncate">{post.title || post.platform} | {new Date(post.scheduledAt).toLocaleDateString('en-AU')} {new Date(post.scheduledAt).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}</p>
+                          {post.connectionName && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              <span className="font-medium">{post.connectionName}</span>
+                            </p>
+                          )}
                           {post.publishedAt && (
                             <p className="text-xs text-green-600 mt-0.5">
                               Published: {new Date(post.publishedAt).toLocaleString()}

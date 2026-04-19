@@ -288,18 +288,28 @@ export async function getScheduledPosts(userIdOrFilters?: number | { status?: st
   }
 
   const query = db
-    .select()
+    .select({
+      id: scheduledPosts.id,
+      postId: scheduledPosts.postId,
+      scheduledById: scheduledPosts.scheduledById,
+      platform: scheduledPosts.platform,
+      scheduledAt: scheduledPosts.scheduledAt,
+      timezoneOffsetMinutes: scheduledPosts.timezoneOffsetMinutes,
+      status: scheduledPosts.status,
+      publishedAt: scheduledPosts.publishedAt,
+      updatedAt: scheduledPosts.updatedAt,
+      connectionId: scheduledPosts.connectionId,
+      lastError: scheduledPosts.lastError,
+      title: contentPosts.title,
+      imageUrl: contentPosts.imageUrl,
+    })
     .from(scheduledPosts)
     .innerJoin(contentPosts, eq(scheduledPosts.postId, contentPosts.id));
   
   if (conditions.length > 0) {
-    return query.where(and(...conditions)).orderBy(scheduledPosts.scheduledAt).then((results) =>
-      results.map((r: any) => r.scheduled_posts)
-    );
+    return query.where(and(...conditions)).orderBy(scheduledPosts.scheduledAt);
   }
-  return query.orderBy(scheduledPosts.scheduledAt).then((results) =>
-    results.map((r: any) => r.scheduled_posts)
-  );
+  return query.orderBy(scheduledPosts.scheduledAt);
 }
 
 export async function updateScheduledPost(id: number, data: Partial<InsertScheduledPost>) {

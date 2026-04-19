@@ -190,6 +190,11 @@ export const scheduleRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const posts = await getScheduledPosts(ctx.user.id);
+      
+      console.log('[schedule.list] Posts returned from DB:', posts.length);
+      if (posts.length > 0) {
+        console.log('[schedule.list] First post:', posts[0]);
+      }
 
       // Filter by status if provided
       if (input?.status) {
