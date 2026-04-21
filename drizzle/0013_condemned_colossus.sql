@@ -1,0 +1,1 @@
+ALTER TABLE `scheduled_posts` MODIFY COLUMN `scheduledAt` bigint NOT NULL;

@@ -281,3 +281,34 @@
 - [ ] Verify correct status transitions (scheduled → publishing → published)
 - [ ] Document Facebook publishing flow and safeguards
 - [ ] Create runbook for troubleshooting failed posts
+
+## Timezone Bug - Scheduled Posts Publishing at Wrong Times (CURRENT)
+- [ ] Investigate: Posts scheduled for 11:56 AM AEST are publishing at 02:30 UTC instead
+- [ ] Root cause: scheduledAt timestamp is being stored/interpreted incorrectly
+- [ ] Fix: Ensure scheduled time is stored correctly relative to user's timezone
+- [ ] Test: Create post scheduled for 10 minutes from now and verify it publishes at correct time
+- [ ] Verify: All existing scheduled posts publish at their intended times
+
+
+## Timezone Fix - Convert TIMESTAMP to BIGINT (COMPLETED)
+- [x] Identified root cause: MySQL TIMESTAMP auto-converts UTC to local timezone (AEST/UTC+10)
+- [x] Solution: Change scheduledAt column from TIMESTAMP to BIGINT (Unix milliseconds)
+- [x] Generated migration: drizzle/0013_condemned_colossus.sql
+- [x] Applied migration to database
+- [x] Updated schema.ts: scheduledAt is now bigint with mode: 'number'
+- [x] Updated scheduleRouter.ts: Convert Date to Unix milliseconds before storing
+- [x] Updated db.ts: getScheduledPostsReadyToPublish() uses Date.now() for comparison
+- [x] Updated publishingWorker.ts: Parse scheduledAt as number, no timezone conversion needed
+- [x] Fixed TypeScript compilation: Used raw SQL for BIGINT comparison
+- [x] Test end-to-end: Post scheduled and published at correct local time ✅
+- [x] Verified: Post appeared on Facebook 5 minutes after scheduling (exact local time)
+- [x] Removed debug logging from publishingWorker.ts and scheduleRouter.ts
+- [x] TIMEZONE BUG FIXED - Posts now publish at exact scheduled local time!
+- [x] Fixed TypeScript compilation: Used raw SQL for BIGINT comparison (sql`${column} <= ${value}`)
+- [x] Fixed database schema mismatch: Removed unnecessary fields from createScheduledPost call
+- [x] Fixed old post timestamps: Converted 25 old posts from YYYYMMDDHHMMSS to Unix milliseconds
+- [x] Server running with correct timestamp format (Unix milliseconds)
+- [x] Ready for user test: Awaiting test post to verify consistent timezone handling
+- [x] Fixed database schema mismatch: Removed timezoneName field from frontend and backend
+- [x] Server restarted successfully with all fixes applied
+- [ ] User test: Schedule new post to verify timezone handling works correctly

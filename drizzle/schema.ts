@@ -1,4 +1,4 @@
-import { mysqlTable, mysqlSchema, AnyMySqlColumn, int, mysqlEnum, text, timestamp, varchar, index, tinyint } from "drizzle-orm/mysql-core"
+import { mysqlTable, mysqlSchema, AnyMySqlColumn, int, mysqlEnum, text, timestamp, varchar, index, tinyint, bigint } from "drizzle-orm/mysql-core"
 import { sql } from "drizzle-orm"
 
 export const approvalHistory = mysqlTable("approval_history", {
@@ -119,12 +119,12 @@ export const publishingJobs = mysqlTable("publishing_jobs", {
 	index("idx_publishing_jobs_user").on(table.userId),
 ]);
 
-export const scheduledPosts = mysqlTable("scheduled_posts", {
-	id: int().autoincrement().notNull(),
-	postId: int().notNull(),
-	scheduledById: int().notNull(),
-	platform: mysqlEnum(['facebook','instagram','tiktok']).notNull(),
-	scheduledAt: timestamp({ mode: 'string' }).notNull(),
+	export const scheduledPosts = mysqlTable("scheduled_posts", {
+		id: int().autoincrement().notNull(),
+		postId: int().notNull(),
+		scheduledById: int().notNull(),
+		platform: mysqlEnum(['facebook','instagram','tiktok']).notNull(),
+		scheduledAt: bigint({ mode: 'number' }).notNull(), // Unix milliseconds (UTC)
 	timezoneOffsetMinutes: int().default(0).notNull(),
 	status: mysqlEnum(['scheduled','publishing','published','failed','cancelled','reconnect_required']).default('scheduled').notNull(),
 	publishedAt: timestamp({ mode: 'string' }),

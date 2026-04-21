@@ -174,7 +174,6 @@ function CalendarContent() {
       platform: selectedPlatform,
       scheduledAt: new Date(selectedUTC.toMillis()),
       timezoneOffsetMinutes: selectedLocal.offset,
-      timezoneName: luxonZone,
     });
   };
 

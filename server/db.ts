@@ -649,14 +649,14 @@ export async function revokeInviteCode(code: string) {
 export async function getScheduledPostsReadyToPublish() {
   const db = await getDb();
   if (!db) return [];
-  const now = new Date().toISOString();
+  const nowMs = Date.now(); // Unix milliseconds
   return db
     .select()
     .from(scheduledPosts)
     .where(
       and(
         eq(scheduledPosts.status, 'scheduled' as any),
-        lte(scheduledPosts.scheduledAt, now)
+        sql`${scheduledPosts.scheduledAt} <= ${nowMs}`
       )
     )
     .orderBy(scheduledPosts.scheduledAt);

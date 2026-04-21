@@ -44,7 +44,6 @@ export const scheduleRouter = router({
         platform: z.enum(["facebook", "instagram", "tiktok"]),
         scheduledAt: z.date(),
         timezoneOffsetMinutes: z.number().optional().default(0),
-        timezoneName: z.string().optional().default("Australia/Brisbane"), // IANA timezone name
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -133,34 +132,27 @@ export const scheduleRouter = router({
       }
 
       // Step 5: Create scheduled post
-      let scheduledAtISO = input.scheduledAt instanceof Date ? input.scheduledAt.toISOString() : input.scheduledAt;
+      // Convert Date to Unix milliseconds for storage
+      const scheduledAtMs = input.scheduledAt instanceof Date 
+        ? input.scheduledAt.getTime() 
+        : new Date(input.scheduledAt).getTime();
       
-      console.log('[scheduleRouter.create] Creating scheduled post:', {
-        postId: input.postId,
-        scheduledById: ctx.user.id,
-        connectionId: input.connectionId,
-        platform: input.platform,
-        scheduledAtISO,
-      });
+      // Scheduled post created with Unix milliseconds timestamp
       
       // NOTE: Frontend already converts local AEST time to UTC before sending
-      // Do NOT apply timezone correction here - it would cause double-subtraction
+      // We store as Unix milliseconds to avoid MySQL timezone conversion
       const result = await createScheduledPost({
         postId: input.postId,
         scheduledById: ctx.user.id,
         connectionId: input.connectionId,
         platform: input.platform,
         pageId: input.pageId,
-        scheduledAt: scheduledAtISO,
+        scheduledAt: scheduledAtMs,
         timezoneOffsetMinutes: input.timezoneOffsetMinutes || 0,
         status: "scheduled",
-        retryCount: 0,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
+      } as any);
 
       // createScheduledPost returns the inserted row with id
-      console.log('[scheduleRouter.create] Success! Scheduled post ID:', result.id);
       return { success: true, scheduledPostId: result.id || 0 };
     }),
 
