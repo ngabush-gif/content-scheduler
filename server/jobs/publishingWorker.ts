@@ -3,6 +3,22 @@ import { scheduledPosts, contentPosts } from "../../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { publishToFacebook, publishToInstagram, publishToTikTok } from "../platformPublisher";
 
+// Helper function to deserialize content post hashtags from JSON string to array
+function deserializeContentPost(post: any) {
+  if (!post) return post;
+  if (typeof post.hashtags === 'string') {
+    try {
+      // Try parsing as JSON first (new format)
+      post.hashtags = JSON.parse(post.hashtags);
+    } catch (e) {
+      // If JSON parse fails, assume it's space-separated (legacy format)
+      const tags = post.hashtags.trim().split(/\s+/).filter((tag: string) => tag.length > 0);
+      post.hashtags = tags;
+    }
+  }
+  return post;
+}
+
 const WORKER_INTERVAL_MS = 30000; // Check every 30 seconds
 
 export async function startPublishingWorker() {
@@ -113,7 +129,9 @@ async function runPublishingCycle() {
       return;
     }
 
-    const postContent = fullPostResult[0];
+    // Deserialize hashtags from JSON string to array
+    const rawPost = fullPostResult[0];
+    const postContent = deserializeContentPost(rawPost);
     const publishPayload = {
       title: postContent.title,
       caption: postContent.caption,

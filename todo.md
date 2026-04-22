@@ -290,6 +290,12 @@
 - [ ] Verify: All existing scheduled posts publish at their intended times
 
 
+## Hashtag Formatting Fix (COMPLETED)
+- [x] Identified issue: Hashtags posted as JSON array string instead of #hashtags
+- [x] Root cause: Publishing worker not deserializing hashtags from JSON to array
+- [x] Fixed: Added deserializeContentPost() call in publishingWorker.ts
+- [x] Verified: Hashtags now properly formatted as #hashtag format
+
 ## Cosmetic Improvements (COMPLETED)
 - [x] Calendar display: Show post title instead of "facebook" - Added connectionName to getScheduledPosts query
 - [x] Calendar display: Show connection name (e.g., "Time Wealth with Leon Makara") - Left join with platformConnections table
