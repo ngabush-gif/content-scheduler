@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { useToastGuard } from "@/lib/toastGuard";
 
 interface QuickImageButtonProps {
   imagePrompt: string;
@@ -15,7 +16,7 @@ export function QuickImageButton({ imagePrompt, onImageSelect }: QuickImageButto
 
   const [isOpen, setIsOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [generatingToastId, setGeneratingToastId] = useState<string | number | null>(null);
+  const toastGuard = useToastGuard();
 
   const generateImageMutation = trpc.media.generateImageFromPrompt.useMutation();
   const isLoading = generateImageMutation.isPending;
@@ -25,10 +26,7 @@ export function QuickImageButton({ imagePrompt, onImageSelect }: QuickImageButto
     setIsOpen(open);
     if (!open) {
       // Dialog is closing - cleanup all state
-      if (generatingToastId) {
-        toast.dismiss(generatingToastId);
-        setGeneratingToastId(null);
-      }
+      toastGuard.dismissAll();
       // Reset the mutation to clear any pending state
       generateImageMutation.reset();
     }
@@ -37,28 +35,22 @@ export function QuickImageButton({ imagePrompt, onImageSelect }: QuickImageButto
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (generatingToastId) {
-        toast.dismiss(generatingToastId);
-      }
+      toastGuard.dismissAll();
     };
-  }, [generatingToastId]);
+  }, []);
 
   const handleGenerateImage = async () => {
     if (!imagePrompt.trim()) {
-      toast.error("❌ Image prompt is empty");
+      toastGuard.error('quick-image-gen', "❌ Image prompt is empty");
       return;
     }
 
-    const toastId = toast.loading('⏳ Generating image... (5-20 seconds)');
-    setGeneratingToastId(toastId);
+    toastGuard.loading('quick-image-gen', '⏳ Generating image... (5-20 seconds)');
     try {
       console.log('[handleGenerateImage] Sending prompt to server:', imagePrompt.substring(0, 50) + '...');
       const result = await generateImageMutation.mutateAsync({
         prompt: imagePrompt,
       });
-
-      toast.dismiss(toastId);
-      setGeneratingToastId(null);
       
       if (result.url) {
         console.log('[QuickImageButton] Generation succeeded, setting preview URL and attaching to card');
@@ -67,26 +59,21 @@ export function QuickImageButton({ imagePrompt, onImageSelect }: QuickImageButto
         // Auto-attach to card
         if (onImageSelect) {
           onImageSelect(result.url, true);
-          toast.success("✅ Image generated and attached!");
+          toastGuard.success('quick-image-gen', "✅ Image generated and attached!");
         } else {
-          toast.success("✅ Image generated successfully!");
+          toastGuard.success('quick-image-gen', "✅ Image generated successfully!");
         }
       } else {
-        toast.error("❌ Image unavailable, prompt ready for use");
+        toastGuard.error('quick-image-gen', "❌ Image unavailable, prompt ready for use");
       }
     } catch (error) {
       console.error("[QuickImageButton] Generation error:", error);
-      toast.dismiss(toastId);
-      setGeneratingToastId(null);
-      toast.error("❌ Image unavailable, prompt ready for use");
+      toastGuard.error('quick-image-gen', "❌ Image unavailable, prompt ready for use");
     }
   };
 
   const handleRegenerate = () => {
-    if (generatingToastId) {
-      toast.dismiss(generatingToastId);
-      setGeneratingToastId(null);
-    }
+    toastGuard.dismiss('quick-image-gen');
     setPreviewUrl(null);
     generateImageMutation.reset();
     handleGenerateImage();

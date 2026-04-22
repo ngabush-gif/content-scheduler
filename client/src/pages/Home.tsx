@@ -1,8 +1,7 @@
-const BUILD_VERSION = '2026-04-23-v2-auto-attach';
-
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { getLoginUrl } from "@/const";
+import { getDisplayVersion } from "@/lib/buildVersion";
 import { BarChart3, BookOpen, Calendar, CheckSquare, Crown, Send, Sparkles, Wand2, Users, ArrowRight, Star } from "lucide-react";
 import { useEffect } from "react";
 import { useLocation } from "wouter";
@@ -154,7 +153,7 @@ export default function Home() {
 
       {/* Build version marker */}
       <div className="fixed bottom-2 right-2 text-xs text-muted-foreground/60 bg-muted/40 px-2 py-1 rounded">
-        v: {BUILD_VERSION}
+        v: {getDisplayVersion()}
       </div>
 
       {/* Footer */}
