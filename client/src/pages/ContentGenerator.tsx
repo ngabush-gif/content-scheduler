@@ -549,7 +549,7 @@ function GeneratorContent() {
                 )}
 
                 {generatedContent.data?.imagePrompt && (
-                  <div>
+                  <div className="relative z-10 pointer-events-auto" style={{ pointerEvents: 'auto' }}>
                     <Label className="text-sm font-medium">Image Prompt</Label>
                     <Textarea
                       value={generatedContent.data.imagePrompt}

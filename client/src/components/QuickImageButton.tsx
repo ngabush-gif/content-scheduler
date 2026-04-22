@@ -11,6 +11,7 @@ interface QuickImageButtonProps {
 }
 
 export function QuickImageButton({ imagePrompt }: QuickImageButtonProps) {
+
   const [isOpen, setIsOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -19,34 +20,40 @@ export function QuickImageButton({ imagePrompt }: QuickImageButtonProps) {
 
   const handleGenerateImage = async () => {
     if (!imagePrompt.trim()) {
-      toast.error("Image prompt is empty");
+      toast.error("❌ Image prompt is empty");
       return;
     }
 
     setIsLoading(true);
+    toast.loading('⏳ Generating image... (5-20 seconds)');
     try {
+      console.log('[handleGenerateImage] Sending prompt to server:', imagePrompt.substring(0, 50) + '...');
       const result = await generateImageMutation.mutateAsync({
         prompt: imagePrompt,
       });
 
       if (result.url) {
         setPreviewUrl(result.url);
-        toast.success("Image generated successfully!");
+        toast.success("✅ Image generated successfully!");
       } else {
-        toast.error("Image unavailable, prompt ready for use");
+        toast.error("❌ Image unavailable, prompt ready for use");
       }
     } catch (error) {
       console.error("[QuickImageButton] Generation error:", error);
-      toast.error("Image unavailable, prompt ready for use");
+      toast.error("❌ Image unavailable, prompt ready for use");
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleDownloadImage = async () => {
-    if (!previewUrl) return;
+    if (!previewUrl) {
+      toast.error("❌ No image to download");
+      return;
+    }
 
     try {
+      toast.loading('⏳ Downloading image...');
       const response = await fetch(previewUrl);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -57,14 +64,15 @@ export function QuickImageButton({ imagePrompt }: QuickImageButtonProps) {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-      toast.success("Image downloaded!");
+      toast.success("✅ Image downloaded!");
     } catch (error) {
       console.error("[QuickImageButton] Download error:", error);
-      toast.error("Failed to download image");
+      toast.error("❌ Failed to download image");
     }
   };
 
   const handleRegenerate = () => {
+    toast.info('🔄 Regenerating image...');
     setPreviewUrl(null);
     handleGenerateImage();
   };
@@ -74,17 +82,17 @@ export function QuickImageButton({ imagePrompt }: QuickImageButtonProps) {
     setPreviewUrl(null);
   };
 
+  const handleButtonClick = () => {
+    setIsOpen(true);
+  };
+
   return (
     <>
       <Button
-        onClick={() => {
-          setIsOpen(true);
-          // Don't auto-generate, wait for user to click the generate button in the modal
-        }}
+        onClick={handleButtonClick}
         variant="outline"
         size="sm"
-        className="w-full"
-        disabled={!imagePrompt.trim()}
+        className="w-full mt-2"
       >
         <Zap className="w-4 h-4 mr-2" />
         ⚡ Quick Image
