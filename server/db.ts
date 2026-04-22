@@ -283,8 +283,8 @@ export async function getScheduledPosts(userIdOrFilters?: number | { status?: st
   } else if (userIdOrFilters) {
     const filters = userIdOrFilters;
     if (filters.status) conditions.push(eq(scheduledPosts.status, filters.status as any));
-    if (filters.from) conditions.push(gte(scheduledPosts.scheduledAt, filters.from.toISOString()));
-    if (filters.to) conditions.push(lte(scheduledPosts.scheduledAt, filters.to.toISOString()));
+    if (filters.from) conditions.push(sql`${scheduledPosts.scheduledAt} >= ${filters.from.getTime()}`);
+    if (filters.to) conditions.push(sql`${scheduledPosts.scheduledAt} <= ${filters.to.getTime()}`);
   }
 
   const query = db
@@ -309,7 +309,7 @@ export async function getScheduledPosts(userIdOrFilters?: number | { status?: st
     .leftJoin(platformConnections, eq(scheduledPosts.connectionId, platformConnections.id));
   
   if (conditions.length > 0) {
-    return query.where(and(...conditions)).orderBy(scheduledPosts.scheduledAt);
+    return query.where(conditions.length === 1 ? conditions[0] : and(...conditions)).orderBy(scheduledPosts.scheduledAt);
   }
   return query.orderBy(scheduledPosts.scheduledAt);
 }

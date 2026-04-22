@@ -290,10 +290,10 @@
 - [ ] Verify: All existing scheduled posts publish at their intended times
 
 
-## Cosmetic Improvements (IN PROGRESS)
-- [ ] Calendar display: Show post title instead of "facebook"
-- [ ] Calendar display: Show connection name (e.g., "Time Wealth with Leon Makara")
-- [ ] Calendar display: Improve visual hierarchy and readability
+## Cosmetic Improvements (COMPLETED)
+- [x] Calendar display: Show post title instead of "facebook" - Added connectionName to getScheduledPosts query
+- [x] Calendar display: Show connection name (e.g., "Time Wealth with Leon Makara") - Left join with platformConnections table
+- [x] Calendar display: Improve visual hierarchy and readability - Post title and connection now displayed prominently
 
 ## Timezone Fix - Convert TIMESTAMP to BIGINT (COMPLETED)
 - [x] Identified root cause: MySQL TIMESTAMP auto-converts UTC to local timezone (AEST/UTC+10)
