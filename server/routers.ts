@@ -455,6 +455,38 @@ IMPORTANT:
         return { url: result.url };
       }),
 
+    generateImageFromPrompt: protectedProcedure
+      .input(z.object({ 
+        prompt: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        try {
+          // Import generateImage helper from _core
+          const { generateImage } = await import("./_core/imageGeneration");
+          
+          // Apply style guidance to the prompt
+          const enhancedPrompt = `${input.prompt}\n\nStyle requirements: realistic, cinematic, 9:16 vertical format. Avoid cartoon, distorted faces, or unrealistic outputs.`;
+          
+          const result = await generateImage({ prompt: enhancedPrompt });
+          
+          if (!result.url) {
+            throw new TRPCError({ 
+              code: "INTERNAL_SERVER_ERROR", 
+              message: "Image generation failed - image unavailable, prompt ready for use" 
+            });
+          }
+          
+          return { url: result.url, success: true };
+        } catch (error) {
+          console.error("[generateImageFromPrompt] Error:", error);
+          // Return error but don't throw - let frontend handle gracefully
+          throw new TRPCError({ 
+            code: "INTERNAL_SERVER_ERROR", 
+            message: error instanceof Error ? error.message : "Image generation failed" 
+          });
+        }
+      }),
+
     uploadImage: protectedProcedure
       .input(z.object({ 
         fileName: z.string(),

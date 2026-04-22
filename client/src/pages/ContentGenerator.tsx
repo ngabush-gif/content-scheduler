@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { ImageUploadField } from "@/components/ImageUploadField";
+import { QuickImageButton } from "@/components/QuickImageButton";
 import { useLocation } from "wouter";
 
 type ContentTypeId = "caption" | "script" | "hashtags" | "ideas" | "full_post";
@@ -555,6 +556,7 @@ function GeneratorContent() {
                       readOnly
                       className="mt-2 h-20 text-xs"
                     />
+                    <QuickImageButton imagePrompt={generatedContent.data.imagePrompt} />
                   </div>
                 )}
 
