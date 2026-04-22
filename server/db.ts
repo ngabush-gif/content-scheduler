@@ -302,9 +302,11 @@ export async function getScheduledPosts(userIdOrFilters?: number | { status?: st
       lastError: scheduledPosts.lastError,
       title: contentPosts.title,
       imageUrl: contentPosts.imageUrl,
+      connectionName: platformConnections.accountName,
     })
     .from(scheduledPosts)
-    .innerJoin(contentPosts, eq(scheduledPosts.postId, contentPosts.id));
+    .innerJoin(contentPosts, eq(scheduledPosts.postId, contentPosts.id))
+    .leftJoin(platformConnections, eq(scheduledPosts.connectionId, platformConnections.id));
   
   if (conditions.length > 0) {
     return query.where(and(...conditions)).orderBy(scheduledPosts.scheduledAt);

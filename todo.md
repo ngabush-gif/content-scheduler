@@ -290,6 +290,11 @@
 - [ ] Verify: All existing scheduled posts publish at their intended times
 
 
+## Cosmetic Improvements (IN PROGRESS)
+- [ ] Calendar display: Show post title instead of "facebook"
+- [ ] Calendar display: Show connection name (e.g., "Time Wealth with Leon Makara")
+- [ ] Calendar display: Improve visual hierarchy and readability
+
 ## Timezone Fix - Convert TIMESTAMP to BIGINT (COMPLETED)
 - [x] Identified root cause: MySQL TIMESTAMP auto-converts UTC to local timezone (AEST/UTC+10)
 - [x] Solution: Change scheduledAt column from TIMESTAMP to BIGINT (Unix milliseconds)
