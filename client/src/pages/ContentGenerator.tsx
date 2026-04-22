@@ -556,7 +556,13 @@ function GeneratorContent() {
                       readOnly
                       className="mt-2 h-20 text-xs"
                     />
-                    <QuickImageButton imagePrompt={generatedContent.data.imagePrompt} />
+                    <QuickImageButton
+                      imagePrompt={generatedContent.data.imagePrompt}
+                      onImageSelect={(url, isAi) => {
+                        setImageUrl(url);
+                        setIsAiGenerated(isAi);
+                      }}
+                    />
                   </div>
                 )}
 
@@ -569,7 +575,14 @@ function GeneratorContent() {
 
                 <div className="flex gap-2 pt-4">
                   <Button
-                    onClick={handleSaveDraft}
+                    onClick={() => {
+                      console.log('[SaveDraftButton] Clicked');
+                      console.log('[SaveDraftButton] isPending:', createPostMutation.isPending);
+                      console.log('[SaveDraftButton] postTitle:', postTitle);
+                      console.log('[SaveDraftButton] imageUrl:', imageUrl);
+                      console.log('[SaveDraftButton] isAiGenerated:', isAiGenerated);
+                      handleSaveDraft();
+                    }}
                     disabled={createPostMutation.isPending || !postTitle.trim()}
                     className="flex-1"
                   >

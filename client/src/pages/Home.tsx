@@ -1,3 +1,5 @@
+const BUILD_VERSION = '2026-04-23-v2-auto-attach';
+
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { getLoginUrl } from "@/const";
@@ -149,6 +151,11 @@ export default function Home() {
           </Button>
         </div>
       </section>
+
+      {/* Build version marker */}
+      <div className="fixed bottom-2 right-2 text-xs text-muted-foreground/60 bg-muted/40 px-2 py-1 rounded">
+        v: {BUILD_VERSION}
+      </div>
 
       {/* Footer */}
       <footer className="relative z-10 border-t border-border/30 py-6 text-center text-sm text-muted-foreground">

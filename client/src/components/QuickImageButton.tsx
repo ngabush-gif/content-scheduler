@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Zap, Loader2, X, Download, RotateCcw } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Zap, Loader2, X, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -8,15 +8,40 @@ import { trpc } from "@/lib/trpc";
 
 interface QuickImageButtonProps {
   imagePrompt: string;
+  onImageSelect?: (imageUrl: string, isAiGenerated: boolean) => void;
 }
 
-export function QuickImageButton({ imagePrompt }: QuickImageButtonProps) {
+export function QuickImageButton({ imagePrompt, onImageSelect }: QuickImageButtonProps) {
 
   const [isOpen, setIsOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [generatingToastId, setGeneratingToastId] = useState<string | number | null>(null);
 
   const generateImageMutation = trpc.media.generateImageFromPrompt.useMutation();
+  const isLoading = generateImageMutation.isPending;
+
+  // Cleanup when dialog closes
+  const handleDialogOpenChange = (open: boolean) => {
+    setIsOpen(open);
+    if (!open) {
+      // Dialog is closing - cleanup all state
+      if (generatingToastId) {
+        toast.dismiss(generatingToastId);
+        setGeneratingToastId(null);
+      }
+      // Reset the mutation to clear any pending state
+      generateImageMutation.reset();
+    }
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (generatingToastId) {
+        toast.dismiss(generatingToastId);
+      }
+    };
+  }, [generatingToastId]);
 
   const handleGenerateImage = async () => {
     if (!imagePrompt.trim()) {
@@ -24,62 +49,47 @@ export function QuickImageButton({ imagePrompt }: QuickImageButtonProps) {
       return;
     }
 
-    setIsLoading(true);
-    toast.loading('⏳ Generating image... (5-20 seconds)');
+    const toastId = toast.loading('⏳ Generating image... (5-20 seconds)');
+    setGeneratingToastId(toastId);
     try {
       console.log('[handleGenerateImage] Sending prompt to server:', imagePrompt.substring(0, 50) + '...');
       const result = await generateImageMutation.mutateAsync({
         prompt: imagePrompt,
       });
 
+      toast.dismiss(toastId);
+      setGeneratingToastId(null);
+      
       if (result.url) {
+        console.log('[QuickImageButton] Generation succeeded, setting preview URL and attaching to card');
         setPreviewUrl(result.url);
-        toast.success("✅ Image generated successfully!");
+        
+        // Auto-attach to card
+        if (onImageSelect) {
+          onImageSelect(result.url, true);
+          toast.success("✅ Image generated and attached!");
+        } else {
+          toast.success("✅ Image generated successfully!");
+        }
       } else {
         toast.error("❌ Image unavailable, prompt ready for use");
       }
     } catch (error) {
       console.error("[QuickImageButton] Generation error:", error);
+      toast.dismiss(toastId);
+      setGeneratingToastId(null);
       toast.error("❌ Image unavailable, prompt ready for use");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleDownloadImage = async () => {
-    if (!previewUrl) {
-      toast.error("❌ No image to download");
-      return;
-    }
-
-    try {
-      toast.loading('⏳ Downloading image...');
-      const response = await fetch(previewUrl);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `quick-image-${Date.now()}.png`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-      toast.success("✅ Image downloaded!");
-    } catch (error) {
-      console.error("[QuickImageButton] Download error:", error);
-      toast.error("❌ Failed to download image");
     }
   };
 
   const handleRegenerate = () => {
-    toast.info('🔄 Regenerating image...');
+    if (generatingToastId) {
+      toast.dismiss(generatingToastId);
+      setGeneratingToastId(null);
+    }
     setPreviewUrl(null);
+    generateImageMutation.reset();
     handleGenerateImage();
-  };
-
-  const handleClose = () => {
-    setIsOpen(false);
-    setPreviewUrl(null);
   };
 
   const handleButtonClick = () => {
@@ -98,7 +108,7 @@ export function QuickImageButton({ imagePrompt }: QuickImageButtonProps) {
         ⚡ Quick Image
       </Button>
 
-      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <Dialog open={isOpen} onOpenChange={handleDialogOpenChange}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Generate Image from Prompt</DialogTitle>
@@ -125,7 +135,7 @@ export function QuickImageButton({ imagePrompt }: QuickImageButtonProps) {
                     />
                     <div className="absolute top-2 right-2 flex gap-1">
                       <button
-                        onClick={handleClose}
+                        onClick={() => handleDialogOpenChange(false)}
                         className="bg-destructive/90 hover:bg-destructive text-destructive-foreground p-1.5 rounded transition-colors"
                       >
                         <X className="w-4 h-4" />
@@ -133,7 +143,7 @@ export function QuickImageButton({ imagePrompt }: QuickImageButtonProps) {
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    AI-generated image ready to download
+                    AI-generated image attached to card
                   </p>
                 </div>
               </Card>
@@ -162,19 +172,19 @@ export function QuickImageButton({ imagePrompt }: QuickImageButtonProps) {
               {previewUrl ? (
                 <>
                   <Button
-                    onClick={handleDownloadImage}
-                    className="flex-1"
-                  >
-                    <Download className="w-4 h-4 mr-2" />
-                    Download Image
-                  </Button>
-                  <Button
                     onClick={handleRegenerate}
                     variant="outline"
                     disabled={isLoading}
+                    className="flex-1"
                   >
                     <RotateCcw className="w-4 h-4 mr-2" />
                     Regenerate
+                  </Button>
+                  <Button
+                    onClick={() => handleDialogOpenChange(false)}
+                    className="flex-1"
+                  >
+                    Done
                   </Button>
                 </>
               ) : (
