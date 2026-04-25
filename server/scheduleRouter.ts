@@ -10,6 +10,7 @@ import {
   getScheduledPosts,
   updateScheduledPost,
 } from "./db";
+import { logScheduleCreation } from "./jobs/schedulerLogger";
 
 /**
  * Schedule Router: Direct Publishing Endpoints
@@ -162,7 +163,29 @@ export const scheduleRouter = router({
       } as any);
 
       // createScheduledPost returns the inserted row with id
-      return { success: true, scheduledPostId: result.id || 0 };
+      const scheduledPostId = result.id || 0;
+      
+      // Log the schedule creation for debugging
+      logScheduleCreation(
+        input.postId,
+        scheduledPostId,
+        input.scheduledAt.toISOString(),
+        input.timezoneId,
+        scheduledAtMs,
+        input.connectionId,
+        input.platform
+      );
+      
+      console.log('[scheduleRouter.create] Success:', {
+        scheduledPostId,
+        postId: input.postId,
+        platform: input.platform,
+        timezone: input.timezoneId,
+        scheduledAtMs,
+        message: `Post scheduled successfully for ${input.scheduledAt.toISOString()} (${input.timezoneId})`,
+      });
+      
+      return { success: true, scheduledPostId };
     }),
 
   /**

@@ -2,6 +2,13 @@ import { getDb, updateScheduledPost, getContentPostById, getConnectionWithCreden
 import { scheduledPosts, contentPosts } from "../../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { publishToFacebook, publishToInstagram, publishToTikTok } from "../platformPublisher";
+import {
+  logWorkerCheck,
+  logPublishAttempt,
+  logPublishSuccess,
+  logPublishFailure,
+  logMissedWindow,
+} from "./schedulerLogger";
 
 // Helper function to deserialize content post hashtags from JSON string to array
 function deserializeContentPost(post: any) {
@@ -64,12 +71,23 @@ async function runPublishingCycle() {
       const scheduledAtUTC = new Date(scheduledAtMs);
       const nextRetryDate = p.nextRetryAt ? (typeof p.nextRetryAt === 'string' ? new Date(p.nextRetryAt.includes('T') ? p.nextRetryAt : p.nextRetryAt + 'Z') : p.nextRetryAt) : null;
       const isReady = scheduledAtUTC <= now && (nextRetryDate === null || nextRetryDate <= now);
+      const userTz = p.timezoneId || 'Australia/Brisbane';
+      const minutesUntilReady = (scheduledAtUTC.getTime() - now.getTime()) / (1000 * 60);
       
-      // Log timezone-aware comparison
-      if (!isReady && p.id % 5 === 0) { // Log every 5th post to avoid spam
-        const userTz = p.timezoneId || 'Australia/Brisbane';
-        const scheduledLocal = new Date(scheduledAtMs).toLocaleString('en-AU', { timeZone: userTz });
-        console.log(`[PW] Post ${p.id} not ready: scheduled ${scheduledLocal} (${userTz}), current ${now.toLocaleString('en-AU', { timeZone: userTz })} (${userTz})`);
+      // Log every check for debugging multi-day scheduling
+      logWorkerCheck(p.postId, p.id, scheduledAtMs, userTz, now, isReady, minutesUntilReady);
+      
+      // Check for missed windows (post was scheduled but worker didn't run)
+      if (!isReady && minutesUntilReady < -5) {
+        const minutesMissed = Math.abs(minutesUntilReady);
+        logMissedWindow(p.postId, p.id, scheduledAtMs, userTz, now, minutesMissed);
+        
+        // CRITICAL: If post is late but within 1 hour, still publish it
+        // This ensures posts don't get stuck if server was idle/hibernated
+        if (minutesMissed < 60) {
+          console.log(`[PublishingWorker] CATCHUP: Post ${p.id} is ${minutesMissed.toFixed(0)} minutes late, publishing now`);
+          return true; // Mark as ready to publish
+        }
       }
       
       return isReady;
@@ -103,9 +121,14 @@ async function runPublishingCycle() {
     const userTz = post.timezoneId || 'Australia/Brisbane';
     const scheduledAtMs = typeof post.scheduledAt === 'number' ? post.scheduledAt : parseInt(post.scheduledAt as string, 10);
     const scheduledLocal = new Date(scheduledAtMs).toLocaleString('en-AU', { timeZone: userTz });
+    const attemptNumber = (post.retryCount || 0) + 1;
+    
     console.log(`[PublishingWorker] 🔄 Processing post ${post.id}...`);
     console.log(`[PublishingWorker] Scheduled for: ${scheduledLocal} (${userTz})`);
     console.log(`[PublishingWorker] Server time (UTC): ${nowISO}`);
+    
+    // Log publish attempt
+    logPublishAttempt(post.postId, post.id, scheduledAtMs, userTz, post.platform, attemptNumber);
 
     // Claim the post for publishing (atomic operation)
     const db2 = await getDb();
@@ -185,6 +208,18 @@ async function runPublishingCycle() {
         errorCode: error.code || 'UNKNOWN_ERROR',
         errorMessage: error.message || 'Unknown error',
       };
+      
+      // Log failure
+      logPublishFailure(
+        post.postId,
+        post.id,
+        scheduledAtMs,
+        userTz,
+        post.platform,
+        publishResult.errorCode,
+        publishResult.errorMessage,
+        attemptNumber
+      );
     }
 
     // Update scheduled post status
@@ -197,6 +232,17 @@ async function runPublishingCycle() {
       console.log(`  scheduledFor: ${scheduledLocal} (${userTz}),`);
       console.log(`  publishedAt: ${publishedLocal} (${userTz})`);
       console.log(`}`);
+      
+      // Log success
+      logPublishSuccess(
+        post.postId,
+        post.id,
+        scheduledAtMs,
+        userTz,
+        post.platform,
+        publishResult.platformPostId,
+        publishResult.facebookTimestamp
+      );
 
       await updateScheduledPost(post.id, {
         status: 'published',
@@ -206,6 +252,9 @@ async function runPublishingCycle() {
       });
     } else {
       console.error(`[PublishingWorker] ❌ Publish failed for post ${post.id}:`, publishResult?.errorMessage);
+      
+      // Logging already done in catch block above
+      
       await updateScheduledPost(post.id, {
         status: 'failed',
         errorMessage: publishResult?.errorMessage || 'Unknown error',
