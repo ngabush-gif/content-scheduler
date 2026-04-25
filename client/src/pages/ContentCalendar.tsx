@@ -174,6 +174,7 @@ function CalendarContent() {
       platform: selectedPlatform,
       scheduledAt: new Date(selectedUTC.toMillis()),
       timezoneOffsetMinutes: selectedLocal.offset,
+      timezoneId: luxonZone,
     });
   };
 
@@ -373,13 +374,21 @@ function CalendarContent() {
 
             {/* Date & Time */}
             <div>
-              <label className="text-sm font-medium">Date & Time ({selectedTimezone})</label>
+              <label className="text-sm font-medium">
+                Date & Time
+                <span className="text-blue-600 ml-2 font-semibold">
+                  Scheduled in {selectedTimezone === 'AEST' ? 'Australia/Brisbane' : selectedTimezone === 'AEDT' ? 'Australia/Brisbane' : selectedTimezone === 'ACST' ? 'Australia/Adelaide' : selectedTimezone === 'ACDT' ? 'Australia/Adelaide' : selectedTimezone === 'AWST' ? 'Australia/Perth' : 'UTC'} time
+                </span>
+              </label>
               <input
                 type="datetime-local"
                 className="w-full p-2 border rounded mt-1"
                 value={selectedDateTime}
                 onChange={(e) => setSelectedDateTime(e.target.value)}
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                Your post will be published at this exact time in your selected timezone.
+              </p>
             </div>
 
             {/* Action Buttons */}

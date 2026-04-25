@@ -44,6 +44,7 @@ export const scheduleRouter = router({
         platform: z.enum(["facebook", "instagram", "tiktok"]),
         scheduledAt: z.date(),
         timezoneOffsetMinutes: z.number().optional().default(0),
+        timezoneId: z.string().default('Australia/Brisbane'),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -53,6 +54,7 @@ export const scheduleRouter = router({
         platform: input.platform,
         scheduledAt: input.scheduledAt?.toISOString?.() || input.scheduledAt,
         timezoneOffsetMinutes: input.timezoneOffsetMinutes,
+        timezoneId: input.timezoneId,
       }, null, 2));
       
       // Step 1: Verify post exists and belongs to user
@@ -137,9 +139,15 @@ export const scheduleRouter = router({
         ? input.scheduledAt.getTime() 
         : new Date(input.scheduledAt).getTime();
       
-      // Scheduled post created with Unix milliseconds timestamp
+      // Log the conversion for debugging
+      console.log('[scheduleRouter.create] Timezone Conversion:', {
+        userTimezone: input.timezoneId,
+        localTimeSelected: input.scheduledAt.toISOString(),
+        storedAsUTCMillis: scheduledAtMs,
+        storedAsUTCDate: new Date(scheduledAtMs).toISOString(),
+      });
       
-      // NOTE: Frontend already converts local AEST time to UTC before sending
+      // NOTE: Frontend already converts local time to UTC before sending
       // We store as Unix milliseconds to avoid MySQL timezone conversion
       const result = await createScheduledPost({
         postId: input.postId,
@@ -149,6 +157,7 @@ export const scheduleRouter = router({
         pageId: input.pageId,
         scheduledAt: scheduledAtMs,
         timezoneOffsetMinutes: input.timezoneOffsetMinutes || 0,
+        timezoneId: input.timezoneId,
         status: "scheduled",
       } as any);
 

@@ -125,7 +125,8 @@ export const publishingJobs = mysqlTable("publishing_jobs", {
 		scheduledById: int().notNull(),
 		platform: mysqlEnum(['facebook','instagram','tiktok']).notNull(),
 		scheduledAt: bigint({ mode: 'number' }).notNull(), // Unix milliseconds (UTC)
-	timezoneOffsetMinutes: int().default(0).notNull(),
+		timezoneOffsetMinutes: int().default(0).notNull(),
+		timezoneId: varchar({ length: 100 }).default('Australia/Brisbane').notNull(), // IANA timezone identifier
 	status: mysqlEnum(['scheduled','publishing','published','failed','cancelled','reconnect_required']).default('scheduled').notNull(),
 	publishedAt: timestamp({ mode: 'string' }),
 	errorMessage: text(),

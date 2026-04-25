@@ -42,6 +42,12 @@ async function runPublishingCycle() {
     const now = new Date();
     const nowISO = now.toISOString();
     const nowMs = now.getTime();
+    
+    console.log('[PublishingWorker] Cycle started:', {
+      serverUTC: nowISO,
+      serverUTCMs: nowMs,
+      timestamp: new Date().toLocaleString('en-AU', { timeZone: 'Australia/Brisbane' }) + ' AEST',
+    });
 
     // Get all scheduled posts
     const allScheduledPosts = await db
@@ -52,13 +58,20 @@ async function runPublishingCycle() {
       ).limit(10);
 
     // Filter for posts ready to publish (scheduledAt <= now)
-    // scheduledAt is now stored as Unix milliseconds (UTC), no timezone conversion needed
+    // scheduledAt is stored as Unix milliseconds (UTC)
     const readyPosts = allScheduledPosts.filter((p: any) => {
       const scheduledAtMs = typeof p.scheduledAt === 'number' ? p.scheduledAt : parseInt(p.scheduledAt as string, 10);
       const scheduledAtUTC = new Date(scheduledAtMs);
       const nextRetryDate = p.nextRetryAt ? (typeof p.nextRetryAt === 'string' ? new Date(p.nextRetryAt.includes('T') ? p.nextRetryAt : p.nextRetryAt + 'Z') : p.nextRetryAt) : null;
       const isReady = scheduledAtUTC <= now && (nextRetryDate === null || nextRetryDate <= now);
-      // Post ready status determined
+      
+      // Log timezone-aware comparison
+      if (!isReady && p.id % 5 === 0) { // Log every 5th post to avoid spam
+        const userTz = p.timezoneId || 'Australia/Brisbane';
+        const scheduledLocal = new Date(scheduledAtMs).toLocaleString('en-AU', { timeZone: userTz });
+        console.log(`[PW] Post ${p.id} not ready: scheduled ${scheduledLocal} (${userTz}), current ${now.toLocaleString('en-AU', { timeZone: userTz })} (${userTz})`);
+      }
+      
       return isReady;
     }).slice(0, 1);
 
@@ -71,10 +84,15 @@ async function runPublishingCycle() {
         const scheduledAtMs = typeof p.scheduledAt === 'number' ? p.scheduledAt : parseInt(p.scheduledAt as string, 10);
         const scheduledAtUTC = new Date(scheduledAtMs);
         const diff = scheduledAtUTC.getTime() - now.getTime();
+        const userTz = p.timezoneId || 'Australia/Brisbane';
+        const scheduledLocal = scheduledAtUTC.toLocaleString('en-AU', { timeZone: userTz });
+        const currentLocal = now.toLocaleString('en-AU', { timeZone: userTz });
         console.log(`[PW] Next post ID ${p.id}:`);
-        console.log(`[PW]   ScheduledAt: ${scheduledAtMs}ms`);
-        console.log(`[PW]   ScheduledAt (UTC): ${scheduledAtUTC.toISOString()}`);
-        console.log(`[PW]   Current UTC: ${nowISO}`);
+        console.log(`[PW]   Timezone: ${userTz}`);
+        console.log(`[PW]   Scheduled (UTC): ${scheduledAtUTC.toISOString()}`);
+        console.log(`[PW]   Scheduled (${userTz}): ${scheduledLocal}`);
+        console.log(`[PW]   Current (UTC): ${nowISO}`);
+        console.log(`[PW]   Current (${userTz}): ${currentLocal}`);
         console.log(`[PW]   Difference: ${Math.round(diff/1000)}s away`);
       }
       return;
@@ -82,7 +100,12 @@ async function runPublishingCycle() {
 
     // Process the first ready post
     const post = readyPosts[0];
+    const userTz = post.timezoneId || 'Australia/Brisbane';
+    const scheduledAtMs = typeof post.scheduledAt === 'number' ? post.scheduledAt : parseInt(post.scheduledAt as string, 10);
+    const scheduledLocal = new Date(scheduledAtMs).toLocaleString('en-AU', { timeZone: userTz });
     console.log(`[PublishingWorker] 🔄 Processing post ${post.id}...`);
+    console.log(`[PublishingWorker] Scheduled for: ${scheduledLocal} (${userTz})`);
+    console.log(`[PublishingWorker] Server time (UTC): ${nowISO}`);
 
     // Claim the post for publishing (atomic operation)
     const db2 = await getDb();
@@ -166,10 +189,13 @@ async function runPublishingCycle() {
 
     // Update scheduled post status
     if (publishResult?.success) {
+      const publishedLocal = new Date().toLocaleString('en-AU', { timeZone: userTz });
       console.log(`[PublishingWorker] ✅ Published post ${post.id} {`);
       console.log(`  scheduledPostId: ${post.id},`);
       console.log(`  platformPostId: ${publishResult.platformPostId},`);
-      console.log(`  platform: ${post.platform}`);
+      console.log(`  platform: ${post.platform},`);
+      console.log(`  scheduledFor: ${scheduledLocal} (${userTz}),`);
+      console.log(`  publishedAt: ${publishedLocal} (${userTz})`);
       console.log(`}`);
 
       await updateScheduledPost(post.id, {

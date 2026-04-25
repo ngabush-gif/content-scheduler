@@ -1,0 +1,1 @@
+ALTER TABLE `scheduled_posts` ADD `timezoneId` varchar(100) DEFAULT 'Australia/Brisbane' NOT NULL;
