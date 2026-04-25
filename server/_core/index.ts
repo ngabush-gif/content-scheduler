@@ -8,6 +8,7 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { startPublishingWorker } from "../jobs/publishingWorker";
+import { registerScheduledPublishEndpoint } from "../scheduledPublishEndpoint";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -36,6 +37,8 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
+  // Scheduled publish endpoint for external scheduler
+  registerScheduledPublishEndpoint(app);
   // tRPC API
   app.use(
     "/api/trpc",
@@ -60,8 +63,11 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
-    // Start the publishing worker for direct backend publishing
-    startPublishingWorker();
+    // DISABLED: In-process publishing worker is unreliable on serverless platforms
+    // Publishing is now handled by external Manus scheduled tasks
+    // See: /api/scheduled/publish-due-posts endpoint
+    // startPublishingWorker();
+    console.log('[Server] Publishing worker disabled - using external scheduled tasks');
   });
 }
 
