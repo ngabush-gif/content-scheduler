@@ -141,11 +141,17 @@ export function registerScheduledPublishEndpoint(app: Express) {
       }
 
       // Prepare publish payload
+      // Deserialize hashtags if needed
+      const deserializedContent = deserializeContentPost(postContent);
       const publishPayload = {
-        title: postContent.title,
-        content: postContent.content,
-        imageUrl: postContent.imageUrl,
-        mediaType: postContent.mediaType as 'none' | 'image' | 'video' | null,
+        title: deserializedContent.title,
+        caption: deserializedContent.caption,
+        hashtags: deserializedContent.hashtags,
+        script: deserializedContent.script,
+        ideas: deserializedContent.ideas,
+        fullContent: deserializedContent.fullContent,
+        imageUrl: deserializedContent.imageUrl,
+        mediaType: deserializedContent.mediaType as 'none' | 'image' | 'video' | null,
       };
 
       // Publish to platform

@@ -7,8 +7,9 @@ import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
-import { startPublishingWorker } from "../jobs/publishingWorker";
+import { startResilientScheduler } from "../jobs/resilientScheduler";
 import { registerScheduledPublishEndpoint } from "../scheduledPublishEndpoint";
+  // Note: The scheduled publish endpoint is kept as a fallback for manual triggering
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -63,11 +64,10 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
-    // DISABLED: In-process publishing worker is unreliable on serverless platforms
-    // Publishing is now handled by external Manus scheduled tasks
-    // See: /api/scheduled/publish-due-posts endpoint
-    // startPublishingWorker();
-    console.log('[Server] Publishing worker disabled - using external scheduled tasks');
+    // Start resilient scheduler that runs every minute
+    // This is more reliable than setInterval because it waits for each cycle to complete
+    startResilientScheduler();
+    console.log('[Server] Resilient scheduler started (every 60 seconds)');
   });
 }
 
