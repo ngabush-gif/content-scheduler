@@ -417,3 +417,14 @@
 - [ ] Ready to declare Facebook scheduling production-ready
 - [ ] Create final checkpoint
 - [ ] Provide summary to user
+
+
+## Facebook Production Stability - Phase 3: Live Monitoring (IN PROGRESS)
+- [x] Set up Manus scheduled task (every 5 minutes)
+- [x] Abandoned cron-job.org (requires cron cookie)
+- [x] Identified real post due at 12:30 PM Brisbane (Post ID 990001)
+- [ ] Monitor post publishing in real-time
+- [ ] Verify exact timing (target: ±30 seconds of scheduled time)
+- [ ] Confirm post appears on Facebook
+- [ ] Document results and timing accuracy
+- [ ] Schedule additional test posts for 24-48 hour verification

@@ -55,13 +55,27 @@ export function registerScheduledPublishEndpoint(app: Express) {
     try {
       const startTime = Date.now();
       
-      // Verify Bearer token
+      // Verify token from Authorization header OR query parameter
+      let token = '';
+      
+      // Try Authorization header first
       const authHeader = req.headers.authorization || '';
-      const token = authHeader.replace('Bearer ', '');
+      if (authHeader) {
+        token = authHeader.replace('Bearer ', '');
+      }
+      
+      // Fall back to query parameter if header not provided
+      if (!token && req.query.token) {
+        token = req.query.token as string;
+      }
       
       if (!token || token !== CRON_SECRET_TOKEN) {
         console.warn('[ScheduledPublish] ❌ Unauthorized request - invalid or missing token');
-        return res.status(401).json({ error: 'Unauthorized: Invalid or missing Bearer token' });
+        console.warn(`[ScheduledPublish] Token source: ${authHeader ? 'header' : 'query'}`);
+        console.warn(`[ScheduledPublish] Expected: "${CRON_SECRET_TOKEN}" (length: ${CRON_SECRET_TOKEN.length})`);
+        console.warn(`[ScheduledPublish] Received: "${token}" (length: ${token.length})`);
+        console.warn(`[ScheduledPublish] Match: ${token === CRON_SECRET_TOKEN}`);
+        return res.status(401).json({ error: 'Unauthorized: Invalid or missing token' });
       }
       
       console.log('[ScheduledPublish] ✓ Authorized cron trigger');
