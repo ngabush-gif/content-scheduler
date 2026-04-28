@@ -39,7 +39,9 @@ function deserializeContentPost(post: any) {
 }
 
 // Generate a secret token for external cron authentication
-const CRON_SECRET_TOKEN = process.env.CRON_SECRET_TOKEN || 'dev-cron-token-change-in-production';
+// Extract just the token value (remove CRON_SECRET_TOKEN= prefix if present)
+const rawToken = process.env.CRON_SECRET_TOKEN || 'dev-cron-token-change-in-production';
+const CRON_SECRET_TOKEN = rawToken.includes('=') ? rawToken.split('=')[1] : rawToken;
 
 export function registerScheduledPublishEndpoint(app: Express) {
   /**
@@ -72,9 +74,9 @@ export function registerScheduledPublishEndpoint(app: Express) {
       if (!token || token !== CRON_SECRET_TOKEN) {
         console.warn('[ScheduledPublish] ❌ Unauthorized request - invalid or missing token');
         console.warn(`[ScheduledPublish] Token source: ${authHeader ? 'header' : 'query'}`);
-        console.warn(`[ScheduledPublish] Expected: "${CRON_SECRET_TOKEN}" (length: ${CRON_SECRET_TOKEN.length})`);
-        console.warn(`[ScheduledPublish] Received: "${token}" (length: ${token.length})`);
-        console.warn(`[ScheduledPublish] Match: ${token === CRON_SECRET_TOKEN}`);
+      console.warn(`[ScheduledPublish] Expected: "${CRON_SECRET_TOKEN}"`);
+      console.warn(`[ScheduledPublish] Received: "${token}"`);
+      console.warn(`[ScheduledPublish] Match: ${token === CRON_SECRET_TOKEN}`);
         return res.status(401).json({ error: 'Unauthorized: Invalid or missing token' });
       }
       

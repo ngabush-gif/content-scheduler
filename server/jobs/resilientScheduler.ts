@@ -116,6 +116,7 @@ async function runPublishingCycle() {
       if (!readyPosts.length) {
         console.log(`[ResilientScheduler] ✓ No posts ready to publish`);
         lastRunTime = Date.now();
+        isRunning = false;
         return; // Success - exit retry loop
       }
 
@@ -145,6 +146,7 @@ async function runPublishingCycle() {
           errorMessage: "Content post not found",
         });
         lastRunTime = Date.now();
+        isRunning = false;
         return;
       }
 
@@ -225,6 +227,7 @@ async function runPublishingCycle() {
       }
 
       lastRunTime = Date.now();
+      isRunning = false;
       return; // Success - exit retry loop
 
     } catch (error: any) {
