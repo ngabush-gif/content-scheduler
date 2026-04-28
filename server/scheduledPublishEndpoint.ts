@@ -38,21 +38,39 @@ function deserializeContentPost(post: any) {
   return post;
 }
 
+// Generate a secret token for external cron authentication
+const CRON_SECRET_TOKEN = process.env.CRON_SECRET_TOKEN || 'dev-cron-token-change-in-production';
+
 export function registerScheduledPublishEndpoint(app: Express) {
   /**
    * POST /api/scheduled/publish-due-posts
    * 
-   * Called by Manus scheduled tasks every minute.
-   * Publishes any posts that are due.
+   * Called by external cron job every 5 minutes.
+   * Also available as fallback for manual triggering.
+   * 
+   * Authentication: Bearer token in Authorization header
+   * Example: Authorization: Bearer <CRON_SECRET_TOKEN>
    */
   app.post("/api/scheduled/publish-due-posts", async (req, res) => {
     try {
       const startTime = Date.now();
+      
+      // Verify Bearer token
+      const authHeader = req.headers.authorization || '';
+      const token = authHeader.replace('Bearer ', '');
+      
+      if (!token || token !== CRON_SECRET_TOKEN) {
+        console.warn('[ScheduledPublish] ❌ Unauthorized request - invalid or missing token');
+        return res.status(401).json({ error: 'Unauthorized: Invalid or missing Bearer token' });
+      }
+      
+      console.log('[ScheduledPublish] ✓ Authorized cron trigger');
+      
       const now = new Date();
       const nowISO = now.toISOString();
       
-      console.log(`[ScheduledPublish] Cycle started at ${nowISO}`);
-
+      console.log(`[ScheduledPublish] 🔄 Cycle started at ${nowISO}`);
+      
       // Get database connection
       const db = await getDb();
       if (!db) {
@@ -91,9 +109,15 @@ export function registerScheduledPublishEndpoint(app: Express) {
       }).slice(0, 1);
 
       if (!readyPosts.length) {
-        console.log(`[ScheduledPublish] No posts ready to publish`);
+        console.log(`[ScheduledPublish] ✓ No posts ready to publish`);
         const duration = Date.now() - startTime;
-        return res.json({ success: true, postsPublished: 0, durationMs: duration });
+        return res.json({ 
+          success: true, 
+          postsPublished: 0, 
+          durationMs: duration,
+          timestamp: nowISO,
+          source: 'external-cron' 
+        });
       }
 
       // Process the first ready post
@@ -216,6 +240,8 @@ export function registerScheduledPublishEndpoint(app: Express) {
           postId: post.id,
           platformPostId: publishResult.platformPostId,
           durationMs: duration,
+          timestamp: nowISO,
+          source: 'external-cron',
         });
       } else {
         console.error(`[ScheduledPublish] ❌ Failed to publish post ${post.id}:`, publishResult?.errorMessage);
@@ -234,11 +260,24 @@ export function registerScheduledPublishEndpoint(app: Express) {
           success: false,
           error: publishResult?.errorMessage,
           durationMs: duration,
+          timestamp: nowISO,
+          source: 'external-cron',
         });
       }
     } catch (error: any) {
-      console.error("[ScheduledPublish] Unexpected error:", error);
-      return res.status(500).json({ error: error.message || 'Internal server error' });
+      console.error("[ScheduledPublish] ❌ Unexpected error:", error);
+      const startTime = Date.now();
+      const duration = Date.now() - startTime;
+      return res.status(500).json({ 
+        error: error.message || 'Internal server error',
+        durationMs: duration,
+        timestamp: new Date().toISOString(),
+        source: 'external-cron',
+      });
     }
   });
+  
+  // Export the secret token for use in environment setup
+  console.log('[ScheduledPublish] Endpoint registered with authentication');
+  console.log('[ScheduledPublish] CRON_SECRET_TOKEN:', CRON_SECRET_TOKEN === 'dev-cron-token-change-in-production' ? '⚠️ USING DEFAULT (CHANGE IN PRODUCTION)' : '✓ Custom token set');
 }

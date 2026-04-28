@@ -349,3 +349,23 @@
 - [x] Verified live mobile flow end-to-end: tap > dialog > generate > image
 - [x] Rebuilt production bundle to deploy fixes to live app
 - [x] Cleaned up debug code and finalized implementation
+
+## Hybrid Scheduler with External Cron (CURRENT) - COMPLETED
+- [x] Implemented internal resilient scheduler (every 60 seconds) with connection error recovery
+- [x] Created secure authenticated endpoint: POST /api/scheduled/publish-due-posts
+- [x] Added Bearer token authentication with CRON_SECRET_TOKEN environment variable
+- [x] Implemented comprehensive lifecycle logging for all scheduled posts
+- [x] Added timezone-aware logging (UTC and Brisbane local times)
+- [x] Fixed missing captions bug: Now sends complete post content to publishing worker
+- [x] Added catch-up logic for server idle scenarios (publishes posts up to 1 hour late)
+- [x] All 4 authentication tests passing
+- [x] Created EXTERNAL_CRON_SETUP.md with complete setup guide
+- [x] Created CRON_CURL_EXAMPLES.md with testing examples
+- [x] Documented 4 cron service options (cron-job.org, EasyCron, AWS EventBridge, Google Cloud Scheduler)
+- [x] Provided curl commands for manual endpoint testing
+- [x] Added monitoring and troubleshooting instructions
+- [ ] User to set up external cron service (recommended: cron-job.org)
+- [ ] User to verify external cron calls reaching endpoint (check logs for "Authorized cron trigger")
+- [ ] User to schedule test posts for next 24-48 hours
+- [ ] User to verify posts publish at exact scheduled times
+- [ ] Once verified, finalize documentation and create final checkpoint

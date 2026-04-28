@@ -64,10 +64,18 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
-    // Start resilient scheduler that runs every minute
-    // This is more reliable than setInterval because it waits for each cycle to complete
+    
+    // Hybrid scheduling architecture:
+    // 1. PRIMARY: External cron calls /api/scheduled/publish-due-posts every 5 minutes (guaranteed execution)
+    // 2. FALLBACK: Internal scheduler runs every 60 seconds when app is active (catches posts if cron fails)
+    
+    console.log('[Server] 🔄 Hybrid scheduler enabled:');
+    console.log('[Server]   PRIMARY: External cron → /api/scheduled/publish-due-posts (every 5 minutes)');
+    console.log('[Server]   FALLBACK: Internal scheduler (every 60 seconds when app is active)');
+    
+    // Start internal scheduler as fallback
     startResilientScheduler();
-    console.log('[Server] Resilient scheduler started (every 60 seconds)');
+    console.log('[Server] ✓ Fallback scheduler started');
   });
 }
 
