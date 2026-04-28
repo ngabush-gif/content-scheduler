@@ -369,3 +369,51 @@
 - [ ] User to schedule test posts for next 24-48 hours
 - [ ] User to verify posts publish at exact scheduled times
 - [ ] Once verified, finalize documentation and create final checkpoint
+
+
+## Facebook Production Stability - Phase 1: Endpoint Verification (CURRENT)
+- [ ] Verify endpoint is accessible from external networks
+- [ ] Test endpoint with curl from local machine
+- [ ] Confirm Bearer token authentication is working
+- [ ] Check response format matches expected JSON schema
+- [ ] Verify no database connection errors
+- [ ] Create endpoint health check script
+
+## Facebook Production Stability - Phase 2: Scheduling Verification Tests - COMPLETED
+- [x] Create comprehensive test suite with 26 tests
+- [x] Test timezone conversions (Brisbane ↔ UTC)
+- [x] Test timestamp storage (Unix milliseconds)
+- [x] Test ready post detection logic
+- [x] Test catch-up logic (≤1 hour late)
+- [x] Test duplicate prevention
+- [x] Test timing accuracy (±1 minute SLA)
+- [x] Test database operations
+- [x] Test error handling
+- [x] Test integration scenarios
+- [x] All 26 tests passing ✅
+
+## Facebook Production Stability - Phase 3: 24-48 Hour Monitoring
+- [ ] Schedule 5-10 test posts across different times
+- [ ] Monitor logs every 30 minutes for "Authorized cron trigger" entries
+- [ ] Track each post through: scheduled → publishing → published
+- [ ] Record actual publish time vs scheduled time
+- [ ] Check Facebook timestamps match Brisbane timezone
+- [ ] Document any missed publishes or delays
+- [ ] Verify no duplicate publishes
+- [ ] Confirm catch-up logic works if server restarts
+
+## Facebook Production Stability - Phase 4: Documentation & Runbook
+- [ ] Create FACEBOOK_SCHEDULING_RUNBOOK.md
+- [ ] Document step-by-step verification procedure
+- [ ] Include troubleshooting guide for common issues
+- [ ] Document expected behavior and SLAs
+- [ ] Create monitoring checklist for production
+- [ ] Document rollback procedures if issues found
+
+## Facebook Production Stability - Phase 5: Final Status
+- [ ] All tests passing (endpoint, scheduling, timing)
+- [ ] No issues found in 24-48 hour monitoring
+- [ ] Documentation complete and verified
+- [ ] Ready to declare Facebook scheduling production-ready
+- [ ] Create final checkpoint
+- [ ] Provide summary to user
