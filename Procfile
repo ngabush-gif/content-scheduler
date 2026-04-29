@@ -1,1 +1,1 @@
-web: node --require tsx/cjs server/_core/index.ts
+web: tsx server/_core/index.ts
