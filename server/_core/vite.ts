@@ -7,10 +7,23 @@ import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import viteConfig from "../../vite.config";
 
-// Use process.cwd() for production (Railway), import.meta.dirname for development
-const __dirname = process.env.NODE_ENV === "production" 
-  ? process.cwd() 
-  : (import.meta.dirname || path.dirname(fileURLToPath(import.meta.url)));
+// Safe __dirname assignment - handle all edge cases
+let __dirname: string;
+try {
+  if (process.env.NODE_ENV === "production") {
+    __dirname = process.cwd();
+  } else {
+    __dirname = import.meta.dirname || path.dirname(fileURLToPath(import.meta.url));
+  }
+} catch (e) {
+  console.warn('[Vite] Failed to determine __dirname, using /app:', e);
+  __dirname = '/app';
+}
+
+if (!__dirname) {
+  console.warn('[Vite] __dirname is empty, using /app');
+  __dirname = '/app';
+}
 
 export async function setupVite(app: Express, server: Server) {
   const serverOptions = {
