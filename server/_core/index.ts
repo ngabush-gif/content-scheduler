@@ -31,6 +31,7 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 }
 
 async function startServer() {
+  console.log('[Startup] Initializing Express app...');
   const app = express();
   const server = createServer(app);
   // Configure body parser with larger size limit for file uploads
@@ -79,4 +80,19 @@ async function startServer() {
   });
 }
 
-startServer().catch(console.error);
+// Add explicit error handling to catch startup errors
+process.on('uncaughtException', (error) => {
+  console.error('[FATAL] Uncaught exception:', error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[FATAL] Unhandled rejection at:', promise, 'reason:', reason);
+  process.exit(1);
+});
+
+console.log('[Startup] Starting server...');
+startServer().catch((error) => {
+  console.error('[FATAL] Failed to start server:', error);
+  process.exit(1);
+});
