@@ -1,7 +1,8 @@
 import { defineConfig } from "vitest/config";
 import path from "path";
 
-const templateRoot = path.resolve(import.meta.dirname);
+// Safely determine templateRoot - handle ESM import.meta.dirname being undefined
+const templateRoot = path.resolve(import.meta.dirname || process.cwd());
 
 export default defineConfig({
   root: templateRoot,
