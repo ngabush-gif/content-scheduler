@@ -7,8 +7,10 @@ import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import viteConfig from "../../vite.config";
 
-// Safe fallback for import.meta.dirname which may be undefined in some Node.js environments
-const __dirname = import.meta.dirname || path.dirname(fileURLToPath(import.meta.url));
+// Use process.cwd() for production (Railway), import.meta.dirname for development
+const __dirname = process.env.NODE_ENV === "production" 
+  ? process.cwd() 
+  : (import.meta.dirname || path.dirname(fileURLToPath(import.meta.url)));
 
 export async function setupVite(app: Express, server: Server) {
   const serverOptions = {
