@@ -92,6 +92,11 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 console.log('[Startup] Starting server...');
+console.log('[Startup] Environment check:');
+console.log(`  NODE_ENV: ${process.env.NODE_ENV}`);
+console.log(`  DATABASE_URL: ${process.env.DATABASE_URL ? '✓ SET' : '❌ MISSING'}`);
+console.log(`  OAUTH_SERVER_URL: ${process.env.OAUTH_SERVER_URL ? '✓ SET' : '❌ MISSING'}`);
+console.log(`  VITE_APP_ID: ${process.env.VITE_APP_ID ? '✓ SET' : '❌ MISSING'}`);
 startServer().catch((error) => {
   console.error('[FATAL] Failed to start server:', error);
   process.exit(1);
